@@ -1,4 +1,4 @@
-# Sonor Network Scanner · v1.6.3
+# Sonor Network Scanner · v1.6.4
 
 A commissioning scanner for AV / Control4 sites. It finds every device on the network and says what it is in AV terms (make, model, firmware, serial where the device publishes it), checks the site against the project's plan in the Network Map app, and prints an as-found IP schedule.
 
@@ -71,6 +71,10 @@ Not done yet: hosting the page at apps.sonor.co.uk (needs the `sonorltd/sonor-ne
 - **Check against project** shows the project's uploaded scans (one master table, filtered per project) and the office's Unassigned
   list (attach to a project). **Review** opens an uploaded scan here; Fill MACs / Mark reviewed calls `net_scan_apply`, which writes
   the revision note into Network Map's history (`sonor_revisions`, app `network-map`: who scanned, who reviewed, what changed).
+
+## v1.6.4 (2026-11-24): Zigbee tab
+- **Zigbee** is its own tab, between Wi-Fi and RF. Type the channel each mesh uses (Control4, Heatmiser neo, Hue, other Thread / Lutron Type X) and press Listen (or Live): each mesh is checked against the Wi-Fi heard here and against the others (two meshes on one channel is flagged), Control4's best of 15 / 20 / 25 with reasons, the quietest free channels for another mesh, a per-channel chart and table, and the Zigbee hubs the scan found (Control4, Hue, neoHub). Channels go up with the scan (`netinfo.zigbee`).
+- **RF** now covers sub-GHz only (Bond, Somfy, Lutron Clear Connect, Shelly) plus the RF probe. The Wi-Fi tab keeps the Zigbee marks under its 2.4 GHz chart.
 
 ## v1.6.3 (2026-11-24): Heatmiser neo
 - **Heatmiser neoHub** found by its local API ports (4242 legacy, 4243 websocket) as well as the vendor name, and shown on the RF tab as its own Zigbee mesh: keep its channel off the Control4 and Hue channels, mains neoStats repeat and battery stats do not. Ranges are a draft until researched.

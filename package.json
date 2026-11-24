@@ -1,6 +1,6 @@
 {
   "name": "sonor-net-scanner",
-  "version": "1.6.3",
+  "version": "1.6.4",
   "description": "Sonor Network Scanner: site agent (Pi / laptop) + page that finds and identifies AV, control and network devices",
   "main": "server.js",
   "scripts": { "start": "node server.js", "test": "node test/test.js && node test/wifi.test.js && node test/wifimap.test.js", "demo": "node test/demo-scan.js" },

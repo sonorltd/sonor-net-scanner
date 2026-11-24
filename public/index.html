@@ -182,6 +182,7 @@ a { color: var(--accent-c); }
   <button data-tab="issues">Issues<span class="count zero" id="issueCount">0</span></button>
   <button data-tab="check">Check against project</button>
   <button data-tab="wifi">Wi-Fi</button>
+  <button data-tab="zigbee">Zigbee</button>
   <button data-tab="rf">RF</button>
   <button data-tab="tools">Tools</button>
   <button data-tab="schedule">IP schedule</button>
@@ -250,13 +251,32 @@ a { color: var(--accent-c); }
         <div id="walkList"></div>
       </div>
       <div class="panel wide"><span class="lbl">Networks around · channel plan</span>
-        <div class="row" style="flex-wrap:wrap"><button id="survGo" class="primary">Survey</button><label class="small" title="Re-survey every few seconds while this tab is open"><input type="checkbox" id="survLive"> Live</label><label class="small"><input type="checkbox" id="survMine"> Only our networks</label><label class="small" title="The Control4 (or other) Zigbee channel on this site, from Composer › Network › Zigbee">Zigbee ch <input id="zbCh" inputmode="numeric" placeholder="—" style="width:52px"></label><input id="survQ" placeholder="Filter SSID, maker, channel…" style="flex:1;min-width:160px"><span class="muted small" id="survSum"></span></div>
+        <div class="row" style="flex-wrap:wrap"><button id="survGo" class="primary">Survey</button><label class="small" title="Re-survey every few seconds while this tab is open"><input type="checkbox" id="survLive"> Live</label><label class="small"><input type="checkbox" id="survMine"> Only our networks</label><input id="survQ" placeholder="Filter SSID, maker, channel…" style="flex:1;min-width:160px"><span class="muted small" id="survSum"></span></div>
         <div class="gflags" id="survFlags" style="margin-top:10px"></div>
         <div class="wrec" id="survRec"></div>
-        <div class="wrec" id="zbRec"></div>
-        <div class="wcharts"><div><div class="lbl">2.4 GHz · Wi-Fi with Zigbee / Thread channels 11–26 underneath</div><canvas class="graph wch" id="ch24" width="760" height="240"></canvas></div><div><div class="lbl">5 GHz</div><canvas class="graph wch" id="ch5" width="1200" height="240"></canvas></div></div>
+        <div class="wcharts"><div><div class="lbl">2.4 GHz · Zigbee channels 11–26 marked underneath (details on the Zigbee tab)</div><canvas class="graph wch" id="ch24" width="760" height="240"></canvas></div><div><div class="lbl">5 GHz</div><canvas class="graph wch" id="ch5" width="1200" height="240"></canvas></div></div>
         <div style="overflow-x:auto;margin-top:10px"><table id="survTable"></table></div>
         <div class="muted small" id="survNote"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-zigbee" hidden>
+    <div class="grid">
+      <div class="panel wide"><span class="lbl">Zigbee meshes on this site</span>
+        <div class="muted small">Every Zigbee system runs its own mesh on one channel (11–26) inside the 2.4 GHz Wi-Fi band. Type the channel each one uses (Control4: Composer › Network › Zigbee; Heatmiser: the neoHub; Hue: the Hue app), then Listen: each mesh is checked against the Wi-Fi heard here and against the others.</div>
+        <div class="row" id="zbMeshes" style="flex-wrap:wrap;gap:12px;margin-top:10px"></div>
+        <div class="row" style="flex-wrap:wrap;margin-top:8px"><button id="zbGo" class="primary">Listen</button><label class="small" title="Re-listen every few seconds while this tab is open"><input type="checkbox" id="zbLive"> Live</label><span class="muted small" id="zbSum"></span></div>
+        <div class="gflags" id="zbFlags" style="margin-top:10px"></div>
+        <div class="wrec" id="zbRec"></div>
+        <div class="lbl" style="margin-top:6px">Wi-Fi sitting on each Zigbee channel</div>
+        <canvas class="graph" id="zbChart" width="1200" height="260" style="height:220px"></canvas>
+        <div style="overflow-x:auto;margin-top:10px"><table id="zbTable"></table></div>
+        <div class="muted small" id="zbNote"></div>
+      </div>
+      <div class="panel wide"><span class="lbl">Zigbee hubs on this network</span>
+        <div class="muted small">Coordinators the scan found on the LAN, with what to check and where they should sit.</div>
+        <div class="rfcards" id="zbHubs"></div>
       </div>
     </div>
   </section>
@@ -264,7 +284,7 @@ a { color: var(--accent-c); }
   <section id="tab-rf" hidden>
     <div class="grid">
       <div class="panel wide"><span class="lbl">RF bridges on this network</span>
-        <div class="muted small">Radio hubs the scan found: what band they use, what to check, and where they should sit. Run a scan first.</div>
+        <div class="muted small">Sub-GHz radio hubs the scan found (blinds, fans, lighting; Zigbee hubs are on the Zigbee tab): what band they use, what to check, and where they should sit. Run a scan first.</div>
         <div class="rfcards" id="rfBridges"></div>
       </div>
       <div class="panel wide"><span class="lbl">RF probe · signal at the blind, motor or receiver</span>
@@ -350,7 +370,7 @@ a { color: var(--accent-c); }
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = '1.6.3';
+const APP_VERSION = '1.6.4';
 const HOSTED_URL = 'https://apps.sonor.co.uk/sonor-net-scanner/';
 if (window.SonorHeader) {
   SonorHeader.init({ appName: 'Network Scanner', repo: 'sonor-net-scanner' });
@@ -891,7 +911,7 @@ async function uploadScan() {
     } catch (e) { if (e.message === 'cancelled') throw e; throw new Error(mode === 'app' ? (AUTH.user() ? 'Could not reach Sonor: check the tablet is online' : 'Press Sign in at the top first') : 'Uploading needs a Sonor sign-in: open the scanner from apps.sonor.co.uk'); }
     const row = { project_id: project ? project.id : null, status: project ? 'pending' : 'unassigned', matched_by: matched, ssid: ssid || null, scanned_at: scanData.startedAt,
       agent: mode === 'app' ? 'tablet' : `agent:${(agent && agent.hostname) || ''}`, app_version: APP_VERSION, subnets: scanData.targets || [], device_count: scanData.devices.length,
-      label: scanData.label || null, netinfo: (info.at || survey || walk.length || rfLog.length || WifiMap.exportPlan()) ? { ...info, speed: info.speed || scanData.speed || null, wifiSurvey: survey ? { at: survey.at, networks: survey.networks.slice(0, 80), analysis: { counts: survey.analysis.counts, recommend: survey.analysis.recommend, flags: survey.analysis.flags } } : null, walk: walk.length ? walk : null, rf: rfLog.length ? rfLog : null, wifiPlan: WifiMap.exportPlan() } : null, devices: scanData.devices.map(compactDevice),
+      label: scanData.label || null, netinfo: (info.at || survey || walk.length || rfLog.length || zbUsed().length || WifiMap.exportPlan()) ? { ...info, speed: info.speed || scanData.speed || null, wifiSurvey: survey ? { at: survey.at, networks: survey.networks.slice(0, 80), analysis: { counts: survey.analysis.counts, recommend: survey.analysis.recommend, flags: survey.analysis.flags } } : null, walk: walk.length ? walk : null, rf: rfLog.length ? rfLog : null, zigbee: zbUsed().length ? { meshes: zbUsed().map(({ k, name, ch }) => ({ system: k, name, channel: ch })), load: survey ? zigbeeLoad(survey.networks).map((z) => ({ ch: z.ch, dbm: z.dbm })) : null } : null, wifiPlan: WifiMap.exportPlan() } : null, devices: scanData.devices.map(compactDevice),
       check_result: plan && plan.projectId === (project && project.id) ? (() => { const c = compare(); return { ok: c.rows.filter((r) => r.status[0] === 'ok').length, warn: c.rows.filter((r) => r.status[0] === 'warn').length, missing: c.rows.filter((r) => r.status[0] === 'bad').length, extra: c.extra.length }; })() : null };
     await rest('/net_scans', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(row) });
     toast(project ? `Uploaded to ${project.name}${matched === 'ssid' ? ` (matched by Wi-Fi "${ssid}")` : ''}` : 'Uploaded. The office will attach it to a project.');
@@ -1236,13 +1256,68 @@ function zigbeeLoad(nets) {   // per Zigbee channel: Wi-Fi spans covering its ce
     return { ch: k, freq: f, dbm: mw ? Math.round(10 * Math.log10(mw)) : null, score, who: who.sort((a, b) => b.signal - a.signal) }; });
 }
 const zbHex = (d) => (d == null ? '#2fbf71' : d < -80 ? '#7cc95a' : d < -70 ? '#e3a72f' : d < -60 ? '#e5784d' : '#e5484d');
-function drawZigbee(canvas, load, cur) {
+function drawZigbee(canvas, load, used) { used = used || [];
   const g = canvas.getContext('2d'); const W = canvas.width; const H = canvas.height; const xs = (f) => (((f - 2407) / 5 + 1) / 16) * W; const yb = H - 30;
   g.font = '13px DM Mono, monospace'; g.textAlign = 'center';
-  for (const z of load) { const x = xs(z.freq); const w = Math.max(6, (2 / 5 / 16) * W); g.fillStyle = zbHex(z.dbm) + (z.ch === cur ? 'ff' : 'aa'); g.fillRect(x - w / 2, yb - 16, w, 16);
-    if (z.ch === cur) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.strokeRect(x - w / 2 - 2, yb - 18, w + 4, 20); g.fillStyle = '#fff'; g.fillText('ZB ' + z.ch, x, yb - 22); } }
+  for (const z of load) { const x = xs(z.freq); const w = Math.max(6, (2 / 5 / 16) * W); g.fillStyle = zbHex(z.dbm) + (used.includes(z.ch) ? 'ff' : 'aa'); g.fillRect(x - w / 2, yb - 16, w, 16);
+    if (used.includes(z.ch)) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.strokeRect(x - w / 2 - 2, yb - 18, w + 4, 20); g.fillStyle = '#fff'; g.fillText('ZB ' + z.ch, x, yb - 22); } }
   g.fillStyle = 'rgba(229,120,77,.08)'; g.fillRect(xs(2440), 26, xs(2470) - xs(2440), yb - 42); g.fillStyle = '#e5784d99'; g.fillText('microwave ovens', (xs(2440) + xs(2470)) / 2, 40);
 }
+// ── Zigbee tab (v1.6.4): one mesh per system, each on its own channel, checked against the Wi-Fi heard here and each other ──
+const ZB_SYS = [
+  { k: 'c4', name: 'Control4', pref: [15, 20, 25], from: 'Composer › Network › Zigbee' },
+  { k: 'neo', name: 'Heatmiser neo', pref: null, from: 'neoHub' },
+  { k: 'hue', name: 'Hue', pref: [11, 15, 20, 25], from: 'Hue app › Settings › Bridge' },
+  { k: 'other', name: 'Other (Thread / Matter, Lutron Type X…)', pref: null, from: 'the hub' },
+];
+let zbMesh = store.get('zbMesh', null) || { c4: store.get('zbCh', '') };
+const zbUsed = () => ZB_SYS.map((x) => ({ ...x, ch: Number(zbMesh[x.k]) || null })).filter((m) => m.ch >= 11 && m.ch <= 26);
+function renderZbMeshes() {
+  $('#zbMeshes').innerHTML = ZB_SYS.map((x) => `<label class="small" title="From ${esc(x.from)}">${esc(x.name)} ch <input data-zbsys="${x.k}" inputmode="numeric" placeholder="—" value="${esc(zbMesh[x.k] || '')}" style="width:56px"></label>`).join('');
+  $('#zbMeshes').querySelectorAll('[data-zbsys]').forEach((i) => i.oninput = () => { zbMesh[i.dataset.zbsys] = i.value.replace(/\D/g, ''); store.set('zbMesh', zbMesh); if (survey) renderSurvey(); else renderZigbee(); });
+}
+function drawZbChart(canvas, load, used) {
+  const g = canvas.getContext('2d'); const W = canvas.width, H = canvas.height; g.clearRect(0, 0, W, H);
+  const top = 30, bot = 34; const PW = W - 70; const y = (d) => H - bot - Math.max(0, ((d ?? -95) + 95) / 65) * (H - top - bot); const slot = PW / 16; const x = (k) => (k - 11 + 0.5) * slot;
+  g.font = '13px DM Mono, monospace'; g.fillStyle = '#8E8E93'; g.textAlign = 'right';
+  for (const d of [-90, -75, -60, -45]) { g.strokeStyle = 'rgba(255,255,255,.06)'; g.beginPath(); g.moveTo(0, y(d)); g.lineTo(W, y(d)); g.stroke(); g.fillText(d + ' dBm', W - 4, y(d) - 3); }
+  g.textAlign = 'center';
+  for (const z of load) { const X = x(z.ch); const u = used.filter((m) => m.ch === z.ch); const bw = slot * 0.62;
+    g.fillStyle = zbHex(z.dbm) + (u.length ? 'ff' : '99'); const yt = z.dbm == null ? H - bot - 4 : y(z.dbm); g.fillRect(X - bw / 2, yt, bw, H - bot - yt);
+    if (u.length) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.strokeRect(X - bw / 2 - 3, Math.min(yt, H - bot - 4) - 3, bw + 6, H - bot - Math.min(yt, H - bot - 4) + 3); g.lineWidth = 1; g.fillStyle = '#fff'; g.font = '600 14px DM Sans, sans-serif'; g.fillText(u.map((m) => m.name.split(' ')[0]).join(' + '), X, Math.min(yt, H - bot - 4) - 10); g.font = '13px DM Mono, monospace'; }
+    g.fillStyle = [15, 20, 25].includes(z.ch) ? '#4bb9d3' : '#8E8E93'; g.fillText(z.ch, X, H - 16); g.fillStyle = '#636366'; g.font = '11px DM Mono, monospace'; g.fillText(z.freq, X, H - 3); g.font = '13px DM Mono, monospace'; }
+  g.fillStyle = 'rgba(229,120,77,.08)'; g.fillRect(x(18.5), top, x(21.5) - x(18.5), H - top - bot); g.fillStyle = '#e5784d99'; g.fillText('microwave ovens', x(20), top - 8);
+}
+function renderZigbee() {
+  const nets = survey ? survey.networks : []; const zl = zigbeeLoad(nets); const used = zbUsed();
+  const tile = (cls, lbl, big, ln) => `<div class="gcard ${cls}"><div class="lbl">${lbl}</div><div class="big">${big}</div><div class="ln">${ln}</div></div>`;
+  const why = (z) => (z.who.length ? `Wi-Fi on it: ${z.who.slice(0, 2).map((n) => `${esc(n.ssid || 'hidden')} ch ${n.channel} ${n.signal} dBm`).join(', ')}` : 'no Wi-Fi above -90 dBm overlaps it');
+  const taken = new Set(used.map((m) => m.ch)); const w1213 = nets.filter((n) => n.band === '2.4 GHz' && n.channel >= 12);
+  const c4p = zl.filter((z) => [15, 20, 25].includes(z.ch)).sort((a, b) => a.score - b.score || [15, 20, 25].indexOf(a.ch) - [15, 20, 25].indexOf(b.ch));
+  const free = zl.filter((z) => !taken.has(z.ch)).sort((a, b) => a.score - b.score || a.ch - b.ch).slice(0, 3);
+  $('#zbSum').textContent = survey ? `${nets.filter((n) => n.band === '2.4 GHz').length} radios on 2.4 GHz · ${new Date(survey.at).toLocaleTimeString('en-GB')}` : 'Press Listen to hear the Wi-Fi on each Zigbee channel.';
+  const flags = [];
+  const byCh = {}; for (const m of used) (byCh[m.ch] = byCh[m.ch] || []).push(m.name);
+  for (const [ch, who] of Object.entries(byCh)) if (who.length > 1) flags.push(['bad', `${who.join(' and ')} share channel ${ch}`, 'Two meshes on one channel talk over each other. Move one of them.']);
+  for (const m of used) { const z = zl.find((q) => q.ch === m.ch);
+    if (m.pref && !m.pref.includes(m.ch)) flags.push(['warn', `${m.name} on ${m.ch}`, `${m.name} recommends ${m.pref.join(', ')}.`]);
+    if (survey && z && z.dbm != null && z.dbm >= -75) flags.push([z.dbm >= -65 ? 'bad' : 'warn', `Wi-Fi on top of ${m.name} (ch ${m.ch}, ${z.dbm} dBm)`, `${why(z)}. ${free[0] ? `Quietest free channel here: ${free[0].ch}.` : ''}`]); }
+  if (w1213.length && taken.has(25)) flags.push(['warn', 'Wi-Fi on 12/13 next to Zigbee 25', `${w1213.slice(0, 2).map((n) => esc(n.ssid || 'hidden')).join(', ')}: keep site Wi-Fi on 1, 6 or 11.`]);
+  $('#zbFlags').innerHTML = flags.map(([l, t, x]) => `<div class="gflag ${l}"><b>${esc(t)}</b><br><span class="muted">${x}</span></div>`).join('');
+  $('#zbRec').innerHTML = [
+    tile('ok', 'Control4 · best of 15 / 20 / 25', survey ? `ch ${c4p[0].ch}` : '—', survey ? `${c4p.map((z) => `<b>${z.ch}</b>: ${why(z)}`).join('<br>')}${w1213.length ? `<br><span style="color:var(--warn)">Wi-Fi on 12/13 here spoils 25.</span>` : ''}<br><span class="muted">Control4 picks its channel once when the mesh is made and never re-checks, so choose it from here before pairing.</span>` : 'Listen first.'),
+    ...used.map((m) => { const z = zl.find((q) => q.ch === m.ch); return tile(!survey ? '' : z.score < 1 || z.dbm == null ? 'ok' : z.dbm >= -65 ? 'bad' : 'warn', `${esc(m.name)} · ch ${m.ch}`, !survey ? '—' : z.dbm == null ? 'Clear' : `${z.dbm} dBm`, survey ? why(z) : `${z.freq} MHz`); }),
+    tile('', 'Free for another mesh', survey && free.length ? free.map((z) => z.ch).join(' · ') : '—', survey ? 'Quietest channels here that no mesh on this site uses. Keep meshes on different channels.' : 'Listen first.'),
+    tile('', 'Also check', 'AP ≥ 5 m', 'Every AP at least 5 m from a Zigbee coordinator (a near AP blocks Zigbee even on another channel); coordinators out of racks and metal. Bluetooth, microwaves (Zigbee 19–21) and the meshes themselves need an ESP32-C6 energy scan to measure.'),
+  ].join('');
+  drawZbChart($('#zbChart'), zl, used);
+  $('#zbTable').innerHTML = `<thead><tr><th>Ch</th><th>MHz</th><th>Wi-Fi on it</th><th>Strongest Wi-Fi</th><th>Used by</th></tr></thead><tbody>${zl.map((z) => `<tr${taken.has(z.ch) ? ' style="background:rgba(75,185,211,.08)"' : ''}><td class="mono">${[15, 20, 25].includes(z.ch) ? '<b>' + z.ch + '</b>' : z.ch}</td><td class="mono">${z.freq}</td><td><span class="pill" style="background:${zbHex(z.dbm)}33;color:${zbHex(z.dbm)}">${!survey ? '—' : z.dbm == null ? 'clear' : z.dbm + ' dBm'}</span></td><td class="small">${z.who[0] ? `${esc(z.who[0].ssid || 'hidden')} · ch ${z.who[0].channel} · ${z.who[0].signal} dBm` : ''}</td><td>${used.filter((m) => m.ch === z.ch).map((m) => esc(m.name)).join(', ')}</td></tr>`).join('')}</tbody>`;
+  $('#zbNote').textContent = 'Zigbee channel k sits at 2405 + 5 × (k − 11) MHz and is 2 MHz wide; a Wi-Fi network covers it when its 20 or 40 MHz span overlaps. This shows the Wi-Fi only: the tablet cannot hear Zigbee itself. Bold channels are the Control4 choices.';
+  const devs = (scanData && scanData.devices) || []; const hubs = []; for (const d of devs) { const gd = RF_GUIDE.find((x) => x.test(d)); if (gd && gd.zb) hubs.push([d, gd]); }
+  $('#zbHubs').innerHTML = (hubs.length ? hubs.map(([d, gd]) => guideCard(d, gd)).join('') : `<p class="muted small">${devs.length ? 'No Control4, Hue or Heatmiser hubs in this scan.' : 'No scan yet: run one on the Devices tab.'}</p>`)
+    + '<p class="muted small">Zigbee devices are not on the LAN, so a scan cannot list them: Control4 keypads, dimmers and remotes, Heatmiser neoStats and neoAirs, Hue bulbs. They will come from the Takeoffs wireless plan once that module is built.</p>';
+}
+const guideCard = (d, g) => `<div class="gcard"><div class="lbl">${esc(d.make || '')} · ${esc(d.kind || '')}</div><div class="big" style="font-size:18px">${esc(nameOf(d) || d.model || d.ip)}</div><div class="ln"><span class="mono">${esc(d.ip)}</span> ${ipLink(d)}${d.mac ? ' · ' + esc(d.mac) : ''}${d.firmware ? ' · fw ' + esc(d.firmware) : ''}<br><b>${esc(g.band)}</b><ul class="rfl">${g.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></div></div>`;
 function drawChannels(canvas, list, band, mine) {
   const g = canvas.getContext('2d'); const W = canvas.width; const H = canvas.height; g.clearRect(0, 0, W, H);
   const top = 26; const bot = 30; const y = (d) => H - bot - Math.max(0, ((d ?? -95) + 95) / 65) * (H - top - bot);
@@ -1280,17 +1355,8 @@ function renderSurvey() {
   ].join('');
   drawChannels($('#ch24'), nets.filter((n) => n.band === '2.4 GHz'), '2.4 GHz', mine);
   drawChannels($('#ch5'), nets.filter((n) => n.band === '5 GHz'), '5 GHz', mine);
-  const zl = zigbeeLoad(survey.networks); const cur = Number($('#zbCh').value) || null; drawZigbee($('#ch24'), zl, cur);
-  const C4P = zl.filter((z) => [15, 20, 25].includes(z.ch)).sort((a, b) => a.score - b.score || [15, 20, 25].indexOf(a.ch) - [15, 20, 25].indexOf(b.ch)); const zbBest = C4P; const C = cur && zl.find((z) => z.ch === cur);
-  const w1213 = survey.networks.filter((n) => n.band === '2.4 GHz' && n.channel >= 12);
-  const why = (z) => (z.who.length ? `Wi-Fi on it: ${z.who.slice(0, 2).map((n) => `${esc(n.ssid || 'hidden')} ch ${n.channel} ${n.signal} dBm`).join(', ')}` : 'no Wi-Fi above -90 dBm overlaps it');
-  const zt = (z) => `ch ${z.ch} <span class="muted">${z.freq} MHz</span>`;
-  $('#zbRec').innerHTML = [
-    tile('ok', 'Control4 Zigbee · best of 15 / 20 / 25', `ch ${zbBest[0].ch}`, `${zbBest.map((z) => `<b>${z.ch}</b>: ${why(z)}`).join('<br>')}${w1213.length ? `<br><span style="color:var(--warn)">Wi-Fi on 12/13 here (${w1213.map((n) => esc(n.ssid || 'hidden')).slice(0, 2).join(', ')}) spoils 25.</span>` : ''}<br><span class="muted">Control4 picks its channel once when the mesh is made and never re-checks, so check at handover and on service visits.</span>`),
-    C ? tile(C.score < 1 ? 'ok' : C.dbm < -75 ? 'warn' : 'bad', `Site Zigbee · ch ${C.ch}`, C.dbm == null ? 'Clear' : `${C.dbm} dBm`, (C.who.length ? why(C) + (C.ch !== zbBest[0].ch && C.score > zbBest[0].score * 2 + 1 ? `. Better: Zigbee ${zbBest[0].ch}.` : '') : 'No Wi-Fi heard over it here.') + ([15, 20, 25].includes(C.ch) ? '' : ' Control4 recommends 15, 20 or 25.'))
-      : tile('', 'Site Zigbee channel', '—', 'Type the Control4 Zigbee channel (Composer › Network › Zigbee) to check it against the Wi-Fi here.'),
-    tile('', 'Also check', 'AP ≥ 5 m', 'Every AP or router at least 5 m from the Control4 mesh controller (a near AP blocks Zigbee even on another channel); never a mesh controller in the rack or on Wi-Fi. Bluetooth, microwaves (Zigbee 19–21) and the mesh itself need an ESP32-C6 energy scan to measure.'),
-  ].join('');
+  drawZigbee($('#ch24'), zigbeeLoad(survey.networks), zbUsed().map((m) => m.ch));
+  renderZigbee();
   const secCls = (s) => (/WEP|TKIP|old/.test(s) ? 'color:var(--bad)' : s === 'Open' ? 'color:var(--warn)' : '');
   $('#survTable').innerHTML = `<thead><tr><th>Network</th><th>Signal</th><th>Band</th><th>Ch</th><th>Width</th><th>Security</th><th>AP maker</th><th>AP (BSSID)</th></tr></thead><tbody>` + nets.map((n) => `<tr${mine.has(n.ssid) ? ' style="background:rgba(75,185,211,.08)"' : ''}><td>${n.inUse ? '● ' : ''}${mine.has(n.ssid) ? '<b>' : ''}${esc(n.ssid || '(hidden)')}${mine.has(n.ssid) ? '</b>' : ''}</td><td style="white-space:nowrap"><span style="display:inline-block;width:60px;height:7px;border-radius:4px;background:var(--tabbar);vertical-align:middle;overflow:hidden"><span style="display:block;height:100%;width:${sigPct(n.signal)}%;background:${sigHex(n.signal)}"></span></span> <span class="mono">${n.signal ?? '—'}</span></td><td>${esc(n.band)}</td><td class="mono">${n.channel ?? ''}</td><td class="mono">${n.width ? n.width + ' MHz' : ''}</td><td style="${secCls(n.security)}">${esc(n.security)}</td><td>${esc(n.vendor)}</td><td class="mono">${esc(n.bssid)}</td></tr>`).join('') + '</tbody>';
   $('#survNote').textContent = survey.note || '';
@@ -1303,9 +1369,9 @@ const RF_GUIDE = [
   { test: (d) => /bond/i.test(d.make), band: '300–450 MHz RF (learns the existing remotes) · Wi-Fi to the LAN', tips: ['Central and high, out of racks and metal boxes, in line of sight of as many motors as practical.', 'One Bond covers a typical floor; add a second per floor where the probe shows marginal results.', 'Give it a DHCP reservation; Control4 drives it over the Bond local API.'] },
   { test: (d) => /somfy/i.test(d.make), band: 'RTS 433.42 MHz (one-way) and io-homecontrol 868 MHz (two-way)', tips: ['RTS reaches about 20 m with no more than two internal walls (Somfy quotes 65 ft).', 'RTS is one-way: a missed command looks like a stuck blind, so probe-test every motor from where the transmitter will live; failures need it moved or an extra transmitter.', 'Local API (port 8443) only after Developer Mode is turned on in the Somfy account.'] },
   { test: (d) => /lutron/i.test(d.make), band: 'Clear Connect Type A (UK/EU 868 MHz, US 434 MHz) or Type X (RA3, 2.4 GHz 802.15.4)', tips: ['Every device within 9 m of the processor or a repeater; repeaters within 18 m of each other (Lutron).', 'Never in a metal enclosure or rack.', 'UK systems are 868 MHz: a 433 MHz probe will not measure them; read the frequency on the model label.'] },
-  { test: (d) => /hue/i.test(d.make) || /hue bridge/i.test(d.kind), band: 'Zigbee 2.4 GHz (channel 11, 15, 20 or 25)', tips: ['Pick the Hue Zigbee channel away from the busiest Wi-Fi (Wi-Fi tab shows the clearest Zigbee channels here).', 'Mains-powered bulbs and plugs repeat: keep some always powered.'] },
-  { test: (d) => /control4/i.test(d.make) && /controller|director|core|ea-|ca-/i.test(`${d.kind} ${d.model}`), band: 'Zigbee 2.4 GHz mesh (Control4 lighting, keypads, remotes)', tips: ['Zigbee on 15, 20 or 25, picked against the Wi-Fi tab; never left on the default.', 'Mesh controller never in the rack (secondary controller centrally, or the C4-AK-3M antenna kit) and never on Wi-Fi; every AP at least 5 m away.', 'Max 70 nodes per mesh; 5–9 m between Zigbee devices.'] },
-  { test: (d) => /heatmiser/i.test(d.make) || /neohub/i.test(d.kind), band: 'Zigbee 2.4 GHz (Heatmiser neo mesh: neoStat, neoAir, neoPlug)', tips: ['Its own Zigbee mesh, separate from Control4 and Hue: check which Zigbee channel the neoHub is on and keep it off the Control4 and Hue channels and away from the busiest Wi-Fi (Wi-Fi tab).', 'neoHub wired to the LAN, central and out of the rack; mains neoStats repeat, battery neoAir / neoStat-e do not, so plan a mains neoStat or neoPlug between the hub and far battery stats.', 'Control4 drives it over the neoHub local API (port 4242 legacy, 4243 websocket); give it a DHCP reservation.', 'Draft: Heatmiser ranges are not researched yet.'] },
+  { zb: true, test: (d) => /hue/i.test(d.make) || /hue bridge/i.test(d.kind), band: 'Zigbee 2.4 GHz (channel 11, 15, 20 or 25)', tips: ['Pick the Hue Zigbee channel away from the busiest Wi-Fi (the Zigbee tab shows the clearest channels here).', 'Mains-powered bulbs and plugs repeat: keep some always powered.'] },
+  { zb: true, test: (d) => /control4/i.test(d.make) && /controller|director|core|ea-|ca-/i.test(`${d.kind} ${d.model}`), band: 'Zigbee 2.4 GHz mesh (Control4 lighting, keypads, remotes)', tips: ['Zigbee on 15, 20 or 25, picked on the Zigbee tab; never left on the default.', 'Mesh controller never in the rack (secondary controller centrally, or the C4-AK-3M antenna kit) and never on Wi-Fi; every AP at least 5 m away.', 'Max 70 nodes per mesh; 5–9 m between Zigbee devices.'] },
+  { zb: true, test: (d) => /heatmiser/i.test(d.make) || /neohub/i.test(d.kind), band: 'Zigbee 2.4 GHz (Heatmiser neo mesh: neoStat, neoAir, neoPlug)', tips: ['Its own Zigbee mesh, separate from Control4 and Hue: check which Zigbee channel the neoHub is on and keep it off the Control4 and Hue channels and away from the busiest Wi-Fi (Zigbee tab).', 'neoHub wired to the LAN, central and out of the rack; mains neoStats repeat, battery neoAir / neoStat-e do not, so plan a mains neoStat or neoPlug between the hub and far battery stats.', 'Control4 drives it over the neoHub local API (port 4242 legacy, 4243 websocket); give it a DHCP reservation.', 'Draft: Heatmiser ranges are not researched yet.'] },
   { test: (d) => /shelly/i.test(d.make), band: 'Wi-Fi 2.4 GHz', tips: ['Shelly relays sit in back boxes: check Wi-Fi at the box with the walk test before plastering.'] },
 ];
 // rf.probe.grades (research 2026-11-24, heuristic: calibrate on the first unit): graded on the worse of level and margin
@@ -1314,10 +1380,8 @@ const rfVerdict = (m, peak) => { if (m == null) return ['—', '']; const p = pe
 let rfLog = store.get('rfLog', []); let rfTimer = null; let rfHist = []; let rfLast = null; let rfTesting = null;
 function rfStop() { clearInterval(rfTimer); rfTimer = null; }
 function renderRf() {
-  const devs = (scanData && scanData.devices) || []; const br = []; for (const d of devs) { const g = RF_GUIDE.find((x) => x.test(d)); if (g) br.push([d, g]); }
-  const zbNote = '<p class="muted small">Zigbee nodes are not on the LAN, so a scan cannot list them: Control4 keypads, dimmers and remotes, Heatmiser neoStats and neoAirs, Hue bulbs. They will come from the Takeoffs wireless plan once that module is built; until then test them on site with the Zigbee view on the Wi-Fi tab.</p>';
-  $('#rfBridges').innerHTML = (br.length ? br.map(([d, g]) => `<div class="gcard"><div class="lbl">${esc(d.make || '')} · ${esc(d.kind || '')}</div><div class="big" style="font-size:18px">${esc(nameOf(d) || d.model || d.ip)}</div><div class="ln"><span class="mono">${esc(d.ip)}</span> ${ipLink(d)}${d.mac ? ' · ' + esc(d.mac) : ''}${d.firmware ? ' · fw ' + esc(d.firmware) : ''}<br><b>${esc(g.band)}</b><ul class="rfl">${g.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></div></div>`).join('')
-    : `<p class="muted small">${devs.length ? 'No Bond, Somfy, Lutron, Hue, Control4, Heatmiser or Shelly hubs in this scan.' : 'No scan yet: run one on the Devices tab.'}</p>`) + zbNote;
+  const devs = (scanData && scanData.devices) || []; const br = []; for (const d of devs) { const g = RF_GUIDE.find((x) => x.test(d)); if (g && !g.zb) br.push([d, g]); }
+  $('#rfBridges').innerHTML = br.length ? br.map(([d, g]) => guideCard(d, g)).join('') : `<p class="muted small">${devs.length ? 'No Bond, Somfy, Lutron or Shelly hubs in this scan. Zigbee hubs (Control4, Hue, Heatmiser) are on the Zigbee tab.' : 'No scan yet: run one on the Devices tab.'}</p>`;
   const probes = devs.filter((d) => /RF probe/i.test(d.kind));
   $('#rfProbeSel').innerHTML = probes.map((d) => `<option value="${esc(d.ip)}">${esc(nameOf(d) || 'RF probe')} · ${esc(d.ip)}</option>`).join('') + '<option value="">Type the IP…</option>';
   $('#rfIp').hidden = !!$('#rfProbeSel').value; renderRfLog();
@@ -1375,10 +1439,11 @@ function renderSchedule() {
 // ── Wiring ────────────────────────────────────────────────
 document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
   document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
-  for (const t of ['devices', 'discovery', 'issues', 'check', 'wifi', 'rf', 'tools', 'schedule']) $('#tab-' + t).hidden = b.dataset.tab !== t;
+  for (const t of ['devices', 'discovery', 'issues', 'check', 'wifi', 'zigbee', 'rf', 'tools', 'schedule']) $('#tab-' + t).hidden = b.dataset.tab !== t;
   hideTip(); if (b.dataset.tab !== 'wifi' && wTimer) wStop();
   if (b.dataset.tab === 'check' && $('#projPick').options.length < 2) loadProjects();
   if (b.dataset.tab === 'rf') renderRf(); else rfStop();
+  if (b.dataset.tab === 'zigbee') renderZigbee();
   store.set('tab', b.dataset.tab);
 });
 $('#scanBtn').onclick = async () => {
@@ -1402,16 +1467,18 @@ $('#walkGo').onclick = walkRecord; $('#walkRoom').addEventListener('keydown', (e
 $('#walkCsv').onclick = walkCsv; $('#walkSpeed').checked = store.get('walkSpeed', true); $('#walkSpeed').onchange = (e) => store.set('walkSpeed', e.target.checked);
 $('#walkClear').onclick = () => { if (!walk.length || reviewWalk) return; if (!confirm(`Clear all ${walk.length} readings?`)) return; walk = []; store.set('walk', walk); renderWalk(); };
 $('#survGo').onclick = runSurvey; $('#survMine').onchange = renderSurvey; $('#survQ').oninput = renderSurvey;
-$('#zbCh').value = store.get('zbCh', ''); $('#zbCh').oninput = () => { store.set('zbCh', $('#zbCh').value.replace(/\D/g, '')); renderSurvey(); };
+renderZbMeshes();
 // Live spectrum: re-survey while the Wi-Fi tab is open. Android allows about 4 Wi-Fi scans per 2 minutes in the foreground,
 // so the tablet refreshes every 30 s; laptops and the Pi every 5 s. Demo jitters the sample so the chart moves.
 let survTimer = null, survBusy = false;
 async function survTick() {
-  if (survBusy || document.hidden || store.get('tab', '') !== 'wifi') return; survBusy = true;
+  if (survBusy || document.hidden || !['wifi', 'zigbee'].includes(store.get('tab', ''))) return; survBusy = true;
   try { const r = await api('wifiSurvey'); if (mode === 'demo') r.networks = r.networks.map((n) => ({ ...n, signal: n.signal + Math.round(Math.random() * 6 - 3) })); survey = r; renderSurvey(); $('#survSum').textContent += mode === 'app' ? ' · live every 30 s (Android limit: turn off Wi-Fi scan throttling in Developer options for faster)' : ' · live'; } catch {}
   survBusy = false;
 }
-$('#survLive').onchange = () => { clearInterval(survTimer); survTimer = null; if ($('#survLive').checked) { survTick(); survTimer = setInterval(survTick, mode === 'app' ? 30000 : 5000); } };
+function setLive(on) { $('#survLive').checked = $('#zbLive').checked = on; clearInterval(survTimer); survTimer = null; if (on) { survTick(); survTimer = setInterval(survTick, mode === 'app' ? 30000 : 5000); } }
+$('#survLive').onchange = () => setLive($('#survLive').checked); $('#zbLive').onchange = () => setLive($('#zbLive').checked);
+$('#zbGo').onclick = async () => { const b = $('#zbGo'); b.disabled = true; b.textContent = 'Listening…'; try { survey = await api('wifiSurvey'); renderSurvey(); } catch (e) { toast(e.message, true); } b.disabled = false; b.textContent = 'Listen again'; };
 WifiMap.init({ $, esc, toast, rest, sbHeaders, sbUrl: SB_URL, api, loadScript, sigHex, mbHex, mode: () => mode, getPlan: () => plan,
   getWalk: shownWalk, setWalk: (w) => { walk = w; store.set('walk', walk); renderWalk(); }, currentProject: () => $('#projPick').value || qs.get('pid') || (() => { try { return localStorage.getItem('sonor_active_project_id') || ''; } catch { return ''; } })() || store.get('project', ''),
   who: () => (AUTH.user() || {}).email || (window.SonorAccess && SonorAccess.user && SonorAccess.user.email) || '', markReviewed: (summary, applied) => markReviewed(summary, applied),
