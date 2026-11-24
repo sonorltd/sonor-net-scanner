@@ -1,4 +1,4 @@
-/* Sonor Zigbee Probe v1.1.0 (2026-11-24): an ESP32-C6 you hold at a keypad, thermostat or bulb. Receive only.
+/* Sonor Zigbee Probe v1.2.0 (2026-11-24): an ESP32-C6 you hold at a keypad, thermostat or bulb. Receive only.
  * It listens on the 802.15.4 radio (Zigbee / Thread, channels 11–26) and serves the Network Scanner's Zigbee tab:
  *   GET /scan            → finds the meshes: a beacon request on every channel, each coordinator / router that answers
  *                          { v, meshes:[{ ch, pan, ext, addr, permitJoin, rssi, lqi, n }] }  (ext = extended PAN id, its
@@ -28,7 +28,7 @@ extern "C" {
 #include "esp_ieee802154.h"
 }
 
-#define VERSION "1.1.0"
+#define VERSION "1.2.0"
 #define PIN_BATT 0             // optional: battery via 2 × 100k divider to GPIO0; reads 0 when not fitted
 #define MAXN 64
 
@@ -147,6 +147,27 @@ void onWifi() {
   prefs.putString("ssid", http.arg("ssid")); prefs.putString("pass", http.arg("pass")); http.send(200, "text/plain", "Saved, restarting"); delay(500); ESP.restart();
 }
 
+
+// ── Node identity (v1.2): every probe says who and where it is, so several can work on one site at once ──
+// Sonor node scheme (shared with every Sonor site node, see sonor-wireless.js NODE): mDNS _sonor-node._tcp, TXT id / kind / caps / spot
+// GET /info → { v, kind, board, caps[], id, name, spot, battery, ssid, wifiRssi, uptime } · GET /spot?name=Kitchen blind → saves the spot
+// GET /identify → blinks the LED for 5 s so you can tell which unit is which. mDNS TXT carries id, kind and spot.
+String nodeId() { uint64_t m = ESP.getEfuseMac(); char b[13]; snprintf(b, sizeof b, "%02X%02X%02X%02X%02X%02X", (uint8_t)m, (uint8_t)(m >> 8), (uint8_t)(m >> 16), (uint8_t)(m >> 24), (uint8_t)(m >> 32), (uint8_t)(m >> 40)); return String(b); }
+unsigned long blinkUntil = 0;
+#ifndef RGB_BUILTIN
+#define RGB_BUILTIN 8
+#endif
+
+void onInfo() {
+  cors(); char b[460];
+  snprintf(b, sizeof b, "{\"v\":\"%s\",\"kind\":\"zigbee\",\"board\":\"esp32c6\",\"caps\":[\"zb-scan\",\"zb-energy\",\"zb-meter\"],\"id\":\"%s\",\"name\":\"sonor-zb-%s\",\"spot\":\"%s\",\"battery\":%d,\"ssid\":\"%s\",\"wifiRssi\":%d,\"uptime\":%lu}",
+    VERSION, nodeId().c_str(), nodeId().substring(8).c_str(), prefs.getString("spot", "").c_str(), battery(), WiFi.SSID().c_str(), WiFi.RSSI(), millis() / 1000);
+  http.send(200, "application/json", b);
+}
+void onSpot() { cors(); String n = http.arg("name"); n.replace("\"", "'"); if (n.length() > 60) n = n.substring(0, 60); prefs.putString("spot", n); MDNS.addServiceTxt("sonor-zb", "tcp", "spot", n.c_str()); MDNS.addServiceTxt("sonor-node", "tcp", "spot", n.c_str()); onInfo(); }
+void onIdentify() { cors(); blinkUntil = millis() + 5000; http.send(200, "application/json", "{\"ok\":true}"); }
+void blinkTick() { if (!blinkUntil) return; if (millis() > blinkUntil) { blinkUntil = 0; rgbLedWrite(RGB_BUILTIN, 0, 0, 0); return; } if ((millis() / 150) % 2) { rgbLedWrite(RGB_BUILTIN, 0, 0, 64); } else { rgbLedWrite(RGB_BUILTIN, 0, 0, 0); } }
+
 void setup() {
   Serial.begin(115200); prefs.begin("zbprobe", false);
   String ssid = prefs.getString("ssid", ""), pass = prefs.getString("pass", "");
@@ -158,9 +179,10 @@ void setup() {
   esp_ieee802154_set_coordinator(false);
   listenOn(prefs.getUChar("ch", 25));
   String host = "sonor-zb-" + String((uint32_t)ESP.getEfuseMac() & 0xFFFF, HEX);
-  if (MDNS.begin(host.c_str())) MDNS.addService("sonor-zb", "tcp", 80);
+  if (MDNS.begin(host.c_str())) { MDNS.addService("sonor-zb", "tcp", 80); MDNS.addServiceTxt("sonor-zb", "tcp", "id", nodeId().c_str()); MDNS.addServiceTxt("sonor-zb", "tcp", "kind", "zigbee"); MDNS.addServiceTxt("sonor-zb", "tcp", "spot", prefs.getString("spot", "").c_str()); MDNS.addService("sonor-node", "tcp", 80); MDNS.addServiceTxt("sonor-node", "tcp", "id", nodeId().c_str()); MDNS.addServiceTxt("sonor-node", "tcp", "kind", "zigbee"); MDNS.addServiceTxt("sonor-node", "tcp", "caps", "zb-scan,zb-energy,zb-meter"); MDNS.addServiceTxt("sonor-node", "tcp", "spot", prefs.getString("spot", "").c_str()); }
+  http.on("/info", onInfo); http.on("/spot", onSpot); http.on("/identify", onIdentify);
   http.on("/scan", onScan); http.on("/energy", onEnergy); http.on("/listen", onListen); http.on("/wifi", onWifi); http.on("/", onWifi);
   http.begin();
 }
 
-void loop() { drainRx(); http.handleClient(); delay(1); }
+void loop() { drainRx(); http.handleClient(); blinkTick(); delay(1); }

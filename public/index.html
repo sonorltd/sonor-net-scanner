@@ -15,7 +15,8 @@
 <script src="./data/sonor-header.js"></script>
 <script src="./data/sonor-app-auth.js"></script>
 <script src="./data/sonor-plan-image.js"></script>  <!-- the ONE Takeoffs plan loader (workspace master) -->
-<script src="./data/sonor-wireless.js"></script>  <!-- the ONE wireless toolkit: Zigbee/Wi-Fi maths, hub guidance, grades, probes (workspace master) -->
+<script src="./data/sonor-wireless.js"></script>
+<script src="./data/artnet-faults.js"></script>  <!-- Art-Net / sACN fault rules (shared with the agent) -->  <!-- the ONE wireless toolkit: Zigbee/Wi-Fi maths, hub guidance, grades, probes (workspace master) -->
 <script src="./wifimap.js"></script>  <!-- Android app: signs in as the engineer (gateway v1.17.0) -->
 <style>
 :root, [data-theme] {
@@ -142,6 +143,10 @@ a { color: var(--accent-c); }
 .gcard .lbl { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 .gcard .big { font-family: var(--mono); font-size: 17px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .gcard .ln { font-size: 12px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; }
+.ncards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; margin-top: 8px; }
+.ncard { background: var(--card); border: 1px solid var(--edge); border-left: 4px solid var(--c, var(--edge)); border-radius: 6px; padding: 8px 10px; min-width: 0; }
+.ncard.off { opacity: .6; } .ncard.add { border-left-style: dashed; }
+.ncard .nhead { display: flex; gap: 6px; align-items: center; } .ncard .ln { font-size: 12px; color: var(--muted); margin-top: 3px; overflow-wrap: anywhere; }
 .gcard .ln b { color: var(--text); font-weight: 500; }
 .gcard.ok { --c: var(--ok); } .gcard.warn { --c: var(--warn); } .gcard.bad { --c: var(--bad); }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--dim)); margin-right: 5px; }
@@ -185,6 +190,7 @@ a { color: var(--accent-c); }
   <button data-tab="wifi">Wi-Fi</button>
   <button data-tab="zigbee">Zigbee</button>
   <button data-tab="rf">RF</button>
+  <button data-tab="artnet">Art-Net</button>
   <button data-tab="tools">Tools</button>
   <button data-tab="schedule">IP schedule</button>
 </div>
@@ -276,10 +282,10 @@ a { color: var(--accent-c); }
         <div class="muted small" id="zbNote"></div>
       </div>
       <div class="panel wide"><span class="lbl">Zigbee probe · meter at the keypad, stat or bulb</span>
-        <div class="muted small">An ESP32-C6 held where the device sits (build and flash it from <code>zb-probe/</code>); the scan finds it by itself. <b>Find meshes</b> fills in the channels above, <b>Noise sweep</b> measures everything on each channel (Bluetooth, microwaves, the meshes), <b>Meter</b> lists every node heard on one mesh, strongest first.</div>
-        <div class="row" style="flex-wrap:wrap;margin-top:8px"><select id="zbProbeSel" style="min-width:200px"></select><input id="zbIp" placeholder="Probe IP" style="width:170px" hidden><button id="zbFind" class="primary">Find meshes</button><button id="zbSweep">Noise sweep</button><select id="zbMeterCh" title="Mesh to meter"></select><button id="zbMeter">Meter</button><span class="muted small" id="zbProbeState"></span></div>
+        <div class="muted small">ESP32-C6 probes (build and flash from <code>zb-probe/</code>): one in the rack beside the hub, battery ones at keypads, stats and bulbs. They are found by themselves; tick the ones to use and pick where each sits. <b>Find meshes</b> fills in the channels above, <b>Noise sweep</b> measures everything on each channel (Bluetooth, microwaves, the meshes), <b>Meter</b> lists every node heard on one mesh, strongest first.</div>
+        <div class="ncards" id="zbPick"></div>
+        <div class="row" style="flex-wrap:wrap;margin-top:8px"><button id="zbFind" class="primary">Find meshes</button><button id="zbSweep">Noise sweep</button><select id="zbMeterCh" title="Mesh to meter"></select><button id="zbMeter">Meter</button><button id="zbTest">Test here</button><span class="muted small" id="zbProbeState"></span></div>
         <div class="wrec" id="zbFound"></div>
-        <div class="row" style="flex-wrap:wrap;margin-top:8px"><select id="zbSpot" style="flex:1;min-width:200px"></select><input id="zbSpotTxt" placeholder="Where is it?" style="flex:1;min-width:160px" hidden><button id="zbTest">Test here</button></div>
         <div class="wrec" id="zbNow"></div>
         <canvas class="graph" id="zbMeterGraph" width="1200" height="220" style="height:180px"></canvas>
         <div style="overflow-x:auto"><table id="zbNodes"></table></div>
@@ -300,12 +306,27 @@ a { color: var(--accent-c); }
         <div class="rfcards" id="rfBridges"></div>
       </div>
       <div class="panel wide"><span class="lbl">RF probe · signal at the blind, motor or receiver</span>
-        <div class="muted small">A small ESP32 + CC1101 receiver left where the radio has to arrive (build and flash it from <code>rf-probe/</code>). It shows the live level and noise there; press <b>Test a press</b>, then the remote, to measure the margin at that spot.</div>
-        <div class="row" style="flex-wrap:wrap;margin-top:8px"><select id="rfProbeSel" style="min-width:200px"></select><input id="rfIp" placeholder="Probe IP, e.g. 192.168.1.77" style="width:190px"><select id="rfFreq"></select><button id="rfGo" class="primary">Connect</button><select id="rfSpot" style="flex:1;min-width:180px"></select><input id="rfSpotTxt" placeholder="Where is it?" style="flex:1;min-width:160px" hidden><button id="rfTest">Test a press</button></div>
+        <div class="muted small">ESP32 + CC1101 receivers left where the radio has to arrive (build and flash from <code>rf-probe/</code>), as many as you like. They are found by themselves; tick the ones to use and pick where each sits. <b>Test a press</b>, then press the remote: every probe logs its margin at its own spot.</div>
+        <div class="ncards" id="rfPick"></div>
+        <div class="row" style="flex-wrap:wrap;margin-top:8px"><select id="rfFreq"></select><button id="rfGo" class="primary">Start</button><button id="rfTest">Test a press</button></div>
         <div class="wrec" id="rfNow"></div>
         <canvas class="graph" id="rfGraph" width="1200" height="260" style="height:220px"></canvas>
         <div style="overflow-x:auto"><table id="rfLog"></table></div>
         <div class="muted small" id="rfNote"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-artnet" hidden>
+    <div class="grid">
+      <div class="panel wide"><span class="lbl">Art-Net and sACN on this network</span>
+        <div class="muted small">Lighting nodes and consoles found by themselves: Art-Net nodes answer a poll (sent to 2.x, 10.x and this network), sACN sources announce their universes. This tab shows what is there and what is wrong; to send DMX to a channel, use the Sonor Art-Net app. Universes show both ways: Art-Net counts from 0, sACN from 1.</div>
+        <div class="row" style="flex-wrap:wrap;margin-top:8px"><button id="anGo" class="primary">Look again</button><button id="anSacn">Listen for sACN</button><label class="small" title="Poll every 3 s; a node is lost after 3 missed polls"><input type="checkbox" id="anLive"> Live</label><span class="muted small" id="anSum"></span></div>
+        <div class="gflags" id="anFlags" style="margin-top:10px"></div>
+        <div style="overflow-x:auto;margin-top:10px"><table id="anNodes"></table></div>
+        <div class="lbl" style="margin-top:14px">Universes</div>
+        <div style="overflow-x:auto"><table id="anUnis"></table></div>
+        <div class="muted small" id="anSacnNote"></div>
       </div>
     </div>
   </section>
@@ -382,7 +403,7 @@ a { color: var(--accent-c); }
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = '1.6.7';
+const APP_VERSION = '1.6.9';
 const HOSTED_URL = 'https://apps.sonor.co.uk/sonor-net-scanner/';
 if (window.SonorHeader) {
   SonorHeader.init({ appName: 'Network Scanner', repo: 'sonor-net-scanner' });
@@ -470,15 +491,31 @@ async function demoApi(action, data = {}) {
     case 'wifiSurvey': { await sleep(2200); const r = await fetch('data/demo-wifi.json'); const j = await r.json(); j.at = new Date().toISOString(); return j; }
     case 'neoHubSystem': { await sleep(300); return { channel: 15, field: 'ZIGBEE_CHANNEL', firmware: '2153', raw: {} }; }
     case 'hueZigbee': { await sleep(300); if (!data || !data.key) { demo.huePress = (demo.huePress || 0) + 1; if (demo.huePress < 2) return { needButton: true, error: 'link button not pressed' }; return { key: 'demo-key', channel: 11, bridgeid: 'ECB5FAFFFE012345' }; } return { key: data.key, channel: 11 }; }
+    case 'artnet': { const op = data && data.op; if (op === 'locate') { await sleep(150); demo.anLoc = data.on ? data.ip : null; return { ok: true }; }
+      if (op === 'sacn') { await sleep(4000); return { sources: [{ cid: 'a1b2', source: 'ETC Nomad (Cinema)', ip: '192.168.1.96', universes: [3, 4], priority: 100, data: { 3: { hz: 40, seqErr: 0, priority: 100, pap: false } } }, { cid: 'c3d4', source: 'QLC+ on laptop', ip: '192.168.1.97', universes: [4], priority: 100, data: {} }] }; }
+      await sleep(700); const P = (n, u, o = {}) => ({ n, protocol: 'DMX512', output: true, input: false, outUniverse: u, inUniverse: null, outData: true, inData: false, outMerging: false, outSacn: false, ...o });
+      const loc = (ip) => (demo.anLoc === ip ? 'locate' : 'normal');
+      return { locals: ['192.168.1.0/24'], dmx: [{ src: '192.168.1.95', universe: 0, packets: 120, length: 512, seqErr: 0, hz: 40 }, { src: '192.168.1.95', universe: 1, packets: 120, length: 512, seqErr: 0, hz: 40 }], nodes: [
+        { ip: '192.168.1.90', port: 6454, firmware: '1.3', net: 0, sub: 0, oem: '0x2c84', esta: '0x454e', maker: 'ENTTEC', shortName: 'ODE Mk3', longName: 'ENTTEC ODE Mk3 · Pool + garden', report: '#0001 [1029] Power On Tests successful', ports: [P(1, 0), P(2, 1)], style: 'Node', mac: '00:50:C2:7A:11:02', bindIndex: 1, rdm: true, indicator: loc('192.168.1.90'), webConfig: true, dhcp: false, dhcpCapable: true },
+        { ip: '192.168.1.91', port: 6454, firmware: '4.7', net: 0, sub: 0, oem: '0x6b4a', esta: '0x4442', maker: 'DMXking', shortName: 'eDMX4 PRO', longName: 'DMXking eDMX4 PRO · Cinema rack', report: '#0001 [0310] OK', ports: [P(1, 2, { outSacn: true }), P(2, 3, { outSacn: true, outMerging: true }), P(3, 4, { outData: false, outSacn: true }), P(4, 5, { outData: false })], style: 'Node', mac: '6C:EC:EB:12:40:9A', bindIndex: 1, rdm: true, indicator: loc('192.168.1.91'), webConfig: true, dhcp: true, dhcpCapable: true },
+        { ip: '2.12.34.56', port: 6454, firmware: '2.0', net: 0, sub: 1, oem: '0x0431', esta: '0x0000', maker: '', shortName: 'NET-2/3', longName: 'Showtec NET-2/3 pocket', report: '#0001 [0002] OK', ports: [P(1, 16, { outData: false })], style: 'Node', mac: '00:1E:C0:22:33:44', bindIndex: 1, rdm: false, indicator: 'normal', webConfig: false, dhcp: false, dhcpCapable: false }] }; }
+    case 'nodes': { await sleep(300); demo.nodes = demo.nodes || [
+        { ip: '192.168.1.77', id: '246F28A1B2C3', kind: 'rf', board: 'esp32+cc1101', caps: ['rf433-rx'], name: 'RF probe A', spot: 'Rack', battery: -1, wifiRssi: -44, v: '1.2.0', online: true },
+        { ip: '192.168.1.79', id: '246F28A1B9D0', kind: 'rf', board: 'esp32+cc1101', caps: ['rf433-rx'], name: 'RF probe B', spot: 'Master bedroom', battery: 3910, wifiRssi: -63, v: '1.2.0', online: true },
+        { ip: '192.168.1.78', id: '404CCA5B107E', kind: 'zigbee', board: 'esp32-c6', caps: ['zigbee', 'thread'], name: 'Zigbee probe A', spot: 'Rack', battery: -1, wifiRssi: -41, v: '1.2.0', online: true },
+        { ip: '192.168.1.80', id: '404CCA5B2211', kind: 'zigbee', board: 'esp32-c6', caps: ['zigbee', 'thread'], name: 'Zigbee probe B', spot: 'Kitchen', battery: 3870, wifiRssi: -66, v: '1.2.0', online: true },
+        { ip: '192.168.1.81', id: '404CCA5B33A4', kind: 'zigbee', board: 'esp32-c6', caps: ['zigbee'], name: 'Zigbee probe C', spot: '', battery: 3400, wifiRssi: -80, v: '1.1.0', online: false }];
+      return { at: Date.now(), nodes: demo.nodes }; }
+    case 'node': { await sleep(200); const n = (demo.nodes || []).find((x) => x.ip === data.ip); if (!n) throw new Error('No node at ' + data.ip); if (data.op === 'spot') n.spot = data.spot; return { ...n, ok: true }; }
     case 'zbProbe': {
-      const op = data && data.op; demo.zb = demo.zb || { ch: 25, frames: 0 };
+      const op = data && data.op; const far = { '192.168.1.80': 14, '192.168.1.78': 0 }[data && data.ip] || 0; demo.zb = demo.zb || { ch: 25, frames: 0 };
       if (op === 'scan') { await sleep(2500); return { v: '1.0.0', meshes: [{ ch: 25, pan: '0x5C41', ext: '00:0F:FF:00:12:9A:4C:01', addr: '0x0000', permitJoin: false, rssi: -61, lqi: 212, n: 2 }, { ch: 11, pan: '0x8E2D', ext: '00:17:88:01:0B:44:2F:90', addr: '0x0000', permitJoin: false, rssi: -70, lqi: 180, n: 2 }, { ch: 15, pan: '0x1F07', ext: 'CC:CC:CC:FF:FE:7A:31:52', addr: '0x0000', permitJoin: true, rssi: -78, lqi: 150, n: 1, kind: 'zigbee' }, { ch: 26, pan: '0x7A11', ext: '', addr: '0x4C00', permitJoin: false, rssi: -72, lqi: 170, n: 2, kind: 'thread' }] }; }
       if (op === 'energy') { await sleep(1200); return { v: '1.0.0', energy: ZB.map((c) => { const mx = c === 20 || c === 21 ? -66 - Math.round(Math.random() * 4) : c < 15 ? -80 - Math.round(Math.random() * 4) : -90 - Math.round(Math.random() * 5); return { ch: c, dbm: mx, median: mx - 8 - Math.round(Math.random() * 4) }; }) }; }
       await sleep(50); if (data && data.ch) demo.zb.ch = Number(data.ch); demo.zb.frames += 3 + Math.round(Math.random() * 5);
       const base = { 25: [['0x4A1C', -58], ['0x91E0', -71], ['0x0000', -79], ['0x22B3', -86]], 11: [['0x0001', -66], ['0x7731', -80]], 15: [['0x0000', -74], ['0x3F12', -83], ['0x5A09', -90]] }[demo.zb.ch] || [];
-      return { v: '1.0.0', ch: demo.zb.ch, rssi: -92 + Math.round(Math.random() * 4), frames: demo.zb.frames, uptime: 600, battery: 3950, ssid: 'Sonor-Demo', wifiRssi: -54, nodes: base.map(([a, r], i) => ({ addr: a, pan: '0x5C41', rssi: r + Math.round(Math.random() * 6 - 3), lqi: Math.max(40, 255 + (r + 50) * 4), n: 10 + i * 3, agoMs: Math.round(Math.random() * 3000) })) };
+      return { v: '1.0.0', ch: demo.zb.ch, rssi: -92 + Math.round(Math.random() * 4), frames: demo.zb.frames, uptime: 600, battery: 3950, ssid: 'Sonor-Demo', wifiRssi: -54, nodes: base.filter(([, r]) => r - far > -97).map(([a, r], i) => ({ addr: a, pan: '0x5C41', rssi: r - far + (i === 2 && far ? 22 : 0) + Math.round(Math.random() * 6 - 3), lqi: Math.max(40, 255 + (r + 50) * 4), n: 10 + i * 3, agoMs: Math.round(Math.random() * 3000) })) };
     }
-    case 'rfProbe': { await sleep(60); demo.rf = demo.rf || { t: 0, mhz: 433.42, bursts: 3 }; if (data && data.mhz) demo.rf.mhz = Number(data.mhz); demo.rf.t++; const fl = -104 + Math.round(Math.random() * 3); const burst = demo.rf.t % 24 < 3; if (burst && demo.rf.t % 24 === 0) demo.rf.bursts++; const pk = burst ? -58 - Math.round(Math.random() * 8) : fl + Math.round(Math.random() * 5);
+    case 'rfProbe': { await sleep(60); const rfar = (data && data.ip) === '192.168.1.79' ? 17 : 0; demo.rf = demo.rf || { t: 0, mhz: 433.42, bursts: 3 }; if (data && data.mhz) demo.rf.mhz = Number(data.mhz); demo.rf.t++; const fl = -104 + Math.round(Math.random() * 3); const burst = demo.rf.t % 24 < 3; if (burst && demo.rf.t % 24 === 0) demo.rf.bursts++; const pk = burst ? -58 - rfar - Math.round(Math.random() * 8) : fl + Math.round(Math.random() * 5);
       return { v: '1.0.0', mhz: demo.rf.mhz, rssi: burst ? pk : fl + 1, floor: fl, peak: pk, peakAgoMs: 40, bursts: demo.rf.bursts, uptime: 300 + demo.rf.t, battery: 3920, ssid: 'Sonor-Demo', wifiRssi: -58 }; }
     case 'wifiLink': { await sleep(120); demo.wt = (demo.wt || 0) + 1; const far = Math.floor(demo.wt / 25) % 2 === 1; const base = far ? -68 : -51; const sig = Math.round(base + Math.sin(demo.wt / 3) * 4 + (Math.random() * 4 - 2));
       return { link: { ssid: 'Sonor-Demo', bssid: far ? '24:5A:4C:10:00:02' : '24:5A:4C:10:00:01', vendor: 'Ubiquiti', channel: far ? 149 : 44, band: '5 GHz', signal: sig, rate: far ? '390 Mb/s' : '866 Mb/s', quality: { label: sig >= -55 ? 'excellent' : sig >= -65 ? 'good' : 'fair: fine for browsing, marginal for 4K / video calls' } } }; }
@@ -934,7 +971,7 @@ async function uploadScan() {
     } catch (e) { if (e.message === 'cancelled') throw e; throw new Error(mode === 'app' ? (AUTH.user() ? 'Could not reach Sonor: check the tablet is online' : 'Press Sign in at the top first') : 'Uploading needs a Sonor sign-in: open the scanner from apps.sonor.co.uk'); }
     const row = { project_id: project ? project.id : null, status: project ? 'pending' : 'unassigned', matched_by: matched, ssid: ssid || null, scanned_at: scanData.startedAt,
       agent: mode === 'app' ? 'tablet' : `agent:${(agent && agent.hostname) || ''}`, app_version: APP_VERSION, subnets: scanData.targets || [], device_count: scanData.devices.length,
-      label: scanData.label || null, netinfo: (info.at || survey || walk.length || rfLog.length || zbUsed().length || zbLog.length || WifiMap.exportPlan()) ? { ...info, speed: info.speed || scanData.speed || null, wifiSurvey: survey ? { at: survey.at, networks: survey.networks.slice(0, 80), analysis: { counts: survey.analysis.counts, recommend: survey.analysis.recommend, flags: survey.analysis.flags } } : null, walk: walk.length ? walk : null, rf: rfLog.length ? rfLog : null, zigbee: (zbUsed().length || zbLog.length || zbFoundList.length) ? { found: zbFoundList, energy: zbEnergy, tests: zbLog, meshes: zbUsed().map(({ k, name, ch }) => ({ system: k, name, channel: ch })), load: survey ? zigbeeLoad(survey.networks).map((z) => ({ ch: z.ch, dbm: z.dbm })) : null } : null, wifiPlan: WifiMap.exportPlan() } : null, devices: scanData.devices.map(compactDevice),
+      label: scanData.label || null, netinfo: (info.at || survey || walk.length || rfLog.length || an.nodes.length || zbUsed().length || zbLog.length || WifiMap.exportPlan()) ? { ...info, speed: info.speed || scanData.speed || null, wifiSurvey: survey ? { at: survey.at, networks: survey.networks.slice(0, 80), analysis: { counts: survey.analysis.counts, recommend: survey.analysis.recommend, flags: survey.analysis.flags } } : null, walk: walk.length ? walk : null, rf: rfLog.length ? rfLog : null, artnet: (an.nodes.length || an.sacn.length) ? { at: an.at, nodes: an.nodes.map(({ lost, missed, ...n }) => n), dmx: an.dmx, sacn: an.sacn, faults: ArtnetFaults.flags({ nodes: an.nodes, dmx: an.dmx, sacn: an.sacn, localCidrs: anLocals }).map((f) => f.id) } : null, zigbee: (zbUsed().length || zbLog.length || zbFoundList.length) ? { found: zbFoundList, energy: zbEnergy, tests: zbLog, meshes: zbUsed().map(({ k, name, ch }) => ({ system: k, name, channel: ch })), load: survey ? zigbeeLoad(survey.networks).map((z) => ({ ch: z.ch, dbm: z.dbm })) : null } : null, wifiPlan: WifiMap.exportPlan() } : null, devices: scanData.devices.map(compactDevice),
       check_result: plan && plan.projectId === (project && project.id) ? (() => { const c = compare(); return { ok: c.rows.filter((r) => r.status[0] === 'ok').length, warn: c.rows.filter((r) => r.status[0] === 'warn').length, missing: c.rows.filter((r) => r.status[0] === 'bad').length, extra: c.extra.length }; })() : null };
     await rest('/net_scans', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(row) });
     toast(project ? `Uploaded to ${project.name}${matched === 'ssid' ? ` (matched by Wi-Fi "${ssid}")` : ''}` : 'Uploaded. The office will attach it to a project.');
@@ -1282,7 +1319,7 @@ function drawZigbee(canvas, load, used) { used = used || [];
 // ── Zigbee tab (v1.6.4): one mesh per system, each on its own channel, checked against the Wi-Fi heard here and each other ──
 let zbMesh = store.get('zbMesh', null) || { c4: store.get('zbCh', '') };
 let zbFoundList = store.get('zbFound', []); let zbEnergy = store.get('zbEnergy', null); let zbLog = store.get('zbLog', []);
-let zbTimer = null, zbHist = [], zbLast = null, zbAutoDone = false;
+let zbTimer = null, zbLast = null, zbAutoDone = false;
 let zbLan = store.get('zbLan', {}); let hueKeys = store.get('hueKeys', {});   // channels read from the hubs; Hue app keys per bridge
 const zbDevs = () => (scanData && scanData.devices) || [];
 const threadNets = () => zbDevs().flatMap((d) => (d.services || []).filter((x) => x.type === '_meshcop._udp').map((x) => ({ ...(x.txt || {}), ip: d.ip }))).filter((t) => t.nn || t.xp);
@@ -1336,50 +1373,89 @@ function renderZbMeterCh() {
   const seen = new Set(); sel.innerHTML = opts.filter(([c]) => !seen.has(c) && seen.add(c)).map(([c, l]) => `<option value="${c}">${esc(l)}</option>`).join('') + `<optgroup label="Any channel">${ZB.filter((c) => !seen.has(c)).map((c) => `<option value="${c}">ch ${c}</option>`).join('')}</optgroup>`;
   if (was && [...sel.options].some((o) => o.value === String(was))) sel.value = String(was);
 }
-function zbProbes() { return ((scanData && scanData.devices) || []).filter((d) => isProbe(d, 'zb')); }
-function fillZbProbe() {
-  const was = $('#zbProbeSel').value; const pr = zbProbes();
-  $('#zbProbeSel').innerHTML = pr.map((d) => `<option value="${esc(d.ip)}">${esc(nameOf(d) || 'Zigbee probe')} · ${esc(d.ip)}</option>`).join('') + '<option value="">Type the probe IP…</option>';
-  if (was && pr.some((d) => d.ip === was)) $('#zbProbeSel').value = was;
-  $('#zbIp').hidden = !!$('#zbProbeSel').value;
-  $('#zbProbeState').textContent = pr.length ? '' : (scanData ? 'No Zigbee probe found in the scan.' : 'Run a scan: the probe is found by itself.');
+// ── Site nodes (v1.6.8): every Sonor probe the agent finds (mDNS _sonor-node._tcp + the scan). Tick the ones to use; each keeps its own spot. ──
+const NODE_COL = ['#4bb9d3', '#e3a72f', '#2fbf71', '#c86bd6', '#e5784d', '#8fa3ff'];
+let siteNodes = store.get('siteNodes', []); let nodePick = store.get('nodePick', {}); let nodeExtra = store.get('nodeExtra', []); let nodesTimer = null, nodesBusy = false;
+const nodeKey = (n) => n.id || n.ip;
+const nodesOf = (k) => siteNodes.filter((n) => n.kind === (k === 'zb' ? 'zigbee' : k));
+const isPicked = (k, n) => (nodePick[k] ? nodePick[k].includes(nodeKey(n)) : true);
+const pickedNodes = (k) => nodesOf(k).filter((n) => n.online !== false && isPicked(k, n));
+const nodeCol = (n) => NODE_COL[Math.max(0, siteNodes.findIndex((x) => x.ip === n.ip)) % NODE_COL.length];
+const nodeLabel = (n) => n.spot || n.name || n.ip;
+async function loadNodes(fresh) {
+  if (nodesBusy) return; nodesBusy = true;
+  try { const r = await api('nodes', { fresh: fresh ? 1 : 0, extra: nodeExtra }); siteNodes = r.nodes || []; store.set('siteNodes', siteNodes); } catch { /* keep the last list */ }
+  nodesBusy = false; renderNodes('rf'); renderNodes('zb');
 }
-const zbIp = () => $('#zbProbeSel').value || $('#zbIp').value.trim();
+function nodesWatch(on) { clearInterval(nodesTimer); nodesTimer = null; if (on) nodesTimer = setInterval(() => { if (!document.hidden) loadNodes(false); }, 20000); }
+function renderNodes(k) {
+  const el = $('#' + k + 'Pick'); if (!el) return; const list = nodesOf(k); const { rooms, devs } = spotOptions();
+  const opt = (v, cur) => `<option${v === cur ? ' selected' : ''}>${esc(v)}</option>`;
+  el.innerHTML = list.map((n) => { const off = n.online === false; const st = off ? (n.legacy ? 'off, or old firmware' : 'offline') : 'online'; const spots = [...new Set([...(n.spot ? [n.spot] : []), ...rooms])];
+    return `<div class="ncard${off ? ' off' : ''}" style="--c:${nodeCol(n)}"><label class="nhead"><input type="checkbox" data-npick="${esc(nodeKey(n))}"${isPicked(k, n) && !off ? ' checked' : ''}${off ? ' disabled' : ''}> <b>${esc(n.spot || n.name || SonorWireless.NODE.kinds[n.kind] || 'Probe')}</b></label>
+      <div class="ln">${esc(n.spot ? (n.name || '') : SonorWireless.NODE.kinds[n.kind] || '')} <span class="mono">${esc(n.ip)}</span> · ${n.battery > 0 ? (n.battery / 1000).toFixed(2) + ' V' : n.battery === -1 ? 'USB' : '—'}${n.wifiRssi ? ' · Wi-Fi ' + n.wifiRssi + ' dBm' : ''} · <span class="pill ${off ? 'bad' : 'ok'}">${st}</span>${n.v ? ' · v' + esc(n.v) : ''}</div>
+      <div class="row" style="margin-top:6px"><select data-nspot="${esc(n.ip)}" style="flex:1;min-width:0"${off ? ' disabled' : ''}><option value="">Where is it?</option><optgroup label="${WifiMap.hasPlan() ? 'Rooms on the plan' : 'Rooms'}">${spots.map((r) => opt(r, n.spot)).join('')}</optgroup>${devs.length ? `<optgroup label="Next to">${devs.map((r) => opt(r, n.spot)).join('')}</optgroup>` : ''}<option value="__type">Type a place…</option></select><button class="btn-sm" data-nid="${esc(n.ip)}"${off ? ' disabled' : ''} title="Blink its light for 5 s">Identify</button></div>
+      <input data-nspottxt="${esc(n.ip)}" placeholder="Where is it? (Enter to save)" hidden style="margin-top:6px;width:100%"></div>`; }).join('')
+    + `<div class="ncard add"><b>${list.length ? 'Another probe?' : 'No probe found yet'}</b><div class="ln">Switch it on: it joins the site Wi-Fi (or the rig hotspot) and appears here by itself within 20 s.</div><div class="row" style="margin-top:6px"><button class="btn-sm" data-nfresh>Look now</button><input data-nadd placeholder="or its IP, Enter" class="mono" style="flex:1;min-width:0"></div></div>`;
+  el.querySelectorAll('[data-npick]').forEach((c) => c.onchange = () => { const cur = nodePick[k] || nodesOf(k).filter((n) => n.online !== false).map(nodeKey); nodePick[k] = c.checked ? [...new Set([...cur, c.dataset.npick])] : cur.filter((x) => x !== c.dataset.npick); store.set('nodePick', nodePick); if (k === 'rf' && rfTimer) rfStart(); });
+  el.querySelectorAll('[data-nid]').forEach((b) => b.onclick = async () => { try { await api('node', { ip: b.dataset.nid, op: 'identify' }); toast('Look for the blinking light'); } catch (e) { toast(e.message, true); } });
+  const saveSpot = async (ip, v) => { try { await api('node', { ip, op: 'spot', spot: v }); const n = siteNodes.find((x) => x.ip === ip); if (n) n.spot = v; store.set('siteNodes', siteNodes); renderNodes(k); toast(`Probe saved as ${v}`); } catch (e) { toast(e.message, true); } };
+  el.querySelectorAll('[data-nspot]').forEach((s) => s.onchange = () => { const t = el.querySelector(`[data-nspottxt="${s.dataset.nspot}"]`); if (s.value === '__type') { t.hidden = false; t.focus(); return; } t.hidden = true; if (s.value) saveSpot(s.dataset.nspot, s.value); });
+  el.querySelectorAll('[data-nspottxt]').forEach((t) => t.onkeydown = (e) => { if (e.key === 'Enter' && t.value.trim()) saveSpot(t.dataset.nspottxt, t.value.trim()); });
+  el.querySelector('[data-nfresh]').onclick = () => loadNodes(true);
+  el.querySelector('[data-nadd]').onkeydown = (e) => { const v = e.target.value.trim(); if (e.key !== 'Enter') return; if (!/^\d+\.\d+\.\d+\.\d+$/.test(v)) return toast('Type an address like 192.168.1.77', true); nodeExtra = [...new Set([...nodeExtra, v])]; store.set('nodeExtra', nodeExtra); loadNodes(true); };
+  if (k === 'zb') $('#zbProbeState').textContent = pickedNodes('zb').length ? `${pickedNodes('zb').length} probe${pickedNodes('zb').length > 1 ? 's' : ''} in use` : '';
+}
+const tileN = (n, big, ln) => `<div class="gcard" style="--c:${nodeCol(n)}"><div class="lbl">${esc(nodeLabel(n))}</div><div class="big">${big}</div><div class="ln">${ln}</div></div>`;
+let zbS = {};   // per probe ip: { last, hist[] }
 function zbStop() { clearInterval(zbTimer); zbTimer = null; if ($('#zbMeter')) $('#zbMeter').textContent = 'Meter'; }
+const zbAll = (op, extra) => Promise.all(pickedNodes('zb').map((n) => api('zbProbe', { ip: n.ip, op, ...(extra || {}) }).then((r) => ({ n, r })).catch((e) => ({ n, err: e.message }))));
 async function zbFind(quiet) {
-  if (!zbIp()) { if (!quiet) toast('Pick the Zigbee probe', true); return; }
+  if (!pickedNodes('zb').length) { if (!quiet) toast('Switch a Zigbee probe on, or tick one above', true); return; }
   const b = $('#zbFind'); b.disabled = true; b.textContent = 'Listening on 11–26…';
-  try { const r = await api('zbProbe', { ip: zbIp(), op: 'scan' }); zbFoundList = (r.meshes || []).filter((m) => m.ext || m.permitJoin || m.n).reduce((a, m) => { const o = a.find((x) => x.pan === m.pan && x.ch === m.ch); if (!o) a.push(m); else if (m.rssi > o.rssi) Object.assign(o, m); return a; }, []);
-    store.set('zbFound', zbFoundList);
+  try { const res = await zbAll('scan'); const bad = res.filter((x) => x.err); if (bad.length === res.length) throw new Error(bad[0].err);
+    // merge every probe's view: one row per mesh (pan + channel), strongest copy kept, with where it was heard
+    const all = res.filter((x) => x.r).flatMap(({ n, r }) => (r.meshes || []).filter((m) => m.ext || m.permitJoin || m.n).map((m) => ({ ...m, heard: [nodeLabel(n)] })));
+    zbFoundList = all.reduce((a, m) => { const o = a.find((x) => x.pan === m.pan && x.ch === m.ch); if (!o) a.push(m); else { const h = [...new Set([...o.heard, ...m.heard])]; if (m.rssi > o.rssi) Object.assign(o, m); o.heard = h; } return a; }, []);
     // auto-match (zbm.auto.flow): a channel read from the hub wins, then Thread by ext PAN, then the maker code; never overwrite a choice
     zbFoundList = autoMatch(zbFoundList, zbLan, threadNets()); store.set('zbFound', zbFoundList); let filled = 0;
     for (const m of zbFoundList) { if (!m.sys || zbUsed().some((u) => u.ch === m.ch)) continue; if (!zbMesh[m.sys]) { zbMesh[m.sys] = String(m.ch); filled++; } }
     store.set('zbMesh', zbMesh); renderZbMeshes(); renderZbMeterCh(); if (survey) renderSurvey(); else renderZigbee();
-    toast(`${zbFoundList.length} Zigbee mesh${zbFoundList.length === 1 ? '' : 'es'} heard${filled ? ` · ${filled} channel${filled > 1 ? 's' : ''} filled in` : ''}`);
+    toast(`${zbFoundList.length} Zigbee mesh${zbFoundList.length === 1 ? '' : 'es'} heard by ${res.length - bad.length} probe${res.length - bad.length > 1 ? 's' : ''}${filled ? ` · ${filled} channel${filled > 1 ? 's' : ''} filled in` : ''}`);
   } catch (e) { if (!quiet) toast(e.message, true); }
   b.disabled = false; b.textContent = 'Find meshes';
 }
 async function zbSweep() {
-  if (!zbIp()) return toast('Pick the Zigbee probe', true); const b = $('#zbSweep'); b.disabled = true; b.textContent = 'Sweeping…';
-  try { const r = await api('zbProbe', { ip: zbIp(), op: 'energy' }); zbEnergy = { at: new Date().toISOString(), ch: r.energy }; store.set('zbEnergy', zbEnergy); renderZigbee(); } catch (e) { toast(e.message, true); }
+  if (!pickedNodes('zb').length) return toast('Switch a Zigbee probe on, or tick one above', true); const b = $('#zbSweep'); b.disabled = true; b.textContent = 'Sweeping…';
+  try { const res = (await zbAll('energy')).filter((x) => x.r); if (!res.length) throw new Error('No probe answered');
+    // worst case across the probes: the loudest reading on each channel, and where it was
+    const ch = ZB.map((c) => { const per = res.map(({ n, r }) => ({ n, e: (r.energy || []).find((x) => x.ch === c) })).filter((x) => x.e).sort((a, b2) => b2.e.dbm - a.e.dbm); return per.length ? { ch: c, dbm: per[0].e.dbm, median: per[0].e.median, at: nodeLabel(per[0].n) } : null; }).filter(Boolean);
+    zbEnergy = { at: new Date().toISOString(), ch, probes: res.map(({ n }) => nodeLabel(n)) }; store.set('zbEnergy', zbEnergy); renderZigbee(); } catch (e) { toast(e.message, true); }
   b.disabled = false; b.textContent = 'Noise sweep';
 }
+let zbBusy = false;
 async function zbPoll(first) {
-  try { const r = await api('zbProbe', { ip: zbIp(), op: 'listen', ch: $('#zbMeterCh').value, reset: first ? 1 : 0 }); zbLast = r;
-    const live = (r.nodes || []).filter((n) => n.agoMs < 15000).sort((a, b) => b.rssi - a.rssi); const best = live[0];
-    zbHist.push({ t: Date.now(), best: best ? best.rssi : null, now: r.rssi }); zbHist = zbHist.slice(-240);
-    const [w, c] = zbVerdict(best && best.rssi);
-    $('#zbNow').innerHTML = [['Strongest node', best ? `${best.rssi} dBm` : '—', best ? `${esc(best.addr)} · LQI ${best.lqi} · <span class="pill ${c}">${w}</span>` : 'Nothing heard yet: press a keypad button or wait for traffic'], ['Nodes heard', live.length, `${zbMeshName(r.ch) || 'ch ' + r.ch} · last 15 s`], ['Frames', r.frames, `on ch ${r.ch}`], ['Probe', r.battery > 0 ? (r.battery / 1000).toFixed(2) + ' V' : 'USB', `${esc(r.ssid || 'own hotspot')}${r.wifiRssi ? ' · Wi-Fi ' + r.wifiRssi + ' dBm' : ''} · v${esc(r.v || '')}`]].map(([l, bb, n]) => `<div class="gcard"><div class="lbl">${l}</div><div class="big">${bb}</div><div class="ln">${n}</div></div>`).join('');
-    $('#zbNodes').innerHTML = live.length ? `<thead><tr><th>Node</th><th>Mesh</th><th>Signal</th><th>LQI</th><th>Frames</th><th>Heard</th></tr></thead><tbody>${live.map((n) => { const [vw, vc] = zbVerdict(n.rssi); return `<tr><td class="mono">${esc(n.addr)}</td><td class="small">${esc(zbMeshName(r.ch, n.pan) || n.pan)}</td><td><span class="pill ${vc}">${n.rssi} dBm · ${vw}</span></td><td class="mono">${n.lqi}</td><td class="mono">${n.n}</td><td class="small muted">${(n.agoMs / 1000).toFixed(1)} s ago</td></tr>`; }).join('')}</tbody>` : '';
-    drawZbMeter();
-  } catch (e) { $('#zbProbeNote').textContent = e.message; }
+  if (zbBusy) return; zbBusy = true; const ch = $('#zbMeterCh').value;
+  const res = await zbAll('listen', { ch, reset: first ? 1 : 0 }); zbBusy = false;
+  for (const { n, r, err } of res) { const s = zbS[n.ip] = zbS[n.ip] || { hist: [] }; s.err = err || ''; if (!r) continue; s.last = r;
+    const live = (r.nodes || []).filter((x) => x.agoMs < 15000).sort((a, b) => b.rssi - a.rssi); s.best = live[0] || null; s.live = live;
+    s.hist.push({ best: s.best ? s.best.rssi : null }); s.hist = s.hist.slice(-240); }
+  // one row per Zigbee node, with the level each probe hears it at
+  const m = new Map(); for (const { n } of res) { const s = zbS[n.ip]; for (const x of (s && s.live) || []) { const o = m.get(x.addr) || { ...x, heard: [] }; if (x.rssi > o.rssi) Object.assign(o, { ...x, heard: o.heard }); o.heard.push({ n, rssi: x.rssi }); m.set(x.addr, o); } }
+  const merged = [...m.values()].sort((a, b) => b.rssi - a.rssi); zbLast = { ch: Number(ch), nodes: merged };
+  $('#zbNow').innerHTML = res.map(({ n, err }) => { const s = zbS[n.ip]; if (err && !(s && s.last)) return tileN(n, '—', esc(err)); const b = s.best; const [w, c] = zbVerdict(b && b.rssi); const r = s.last;
+    return tileN(n, b ? `${b.rssi} dBm` : '—', `${b ? `${esc(b.addr)} · LQI ${b.lqi} · <span class="pill ${c}">${w}</span>` : 'Nothing heard yet: press a keypad button'} · ${s.live.length} node${s.live.length === 1 ? '' : 's'} · ${r.battery > 0 ? (r.battery / 1000).toFixed(2) + ' V' : 'USB'}`); }).join('')
+    || '<p class="muted small">No probe in use: tick one above.</p>';
+  $('#zbNodes').innerHTML = merged.length ? `<thead><tr><th>Node</th><th>Mesh</th><th>Best signal</th><th>LQI</th><th>Heard by</th><th>Heard</th></tr></thead><tbody>${merged.map((x) => { const [vw, vc] = zbVerdict(x.rssi); return `<tr><td class="mono">${esc(x.addr)}</td><td class="small">${esc(zbMeshName(Number(ch), x.pan) || x.pan)}</td><td><span class="pill ${vc}">${x.rssi} dBm · ${vw}</span></td><td class="mono">${x.lqi}</td><td class="small">${x.heard.sort((a, b) => b.rssi - a.rssi).map((h) => `<span style="color:${nodeCol(h.n)}">${esc(nodeLabel(h.n))}</span> ${h.rssi}`).join(' · ')}</td><td class="small muted">${(x.agoMs / 1000).toFixed(1)} s ago</td></tr>`; }).join('')}</tbody>` : '';
+  drawZbMeter();
 }
 function drawZbMeter() {
   const cv = $('#zbMeterGraph'); const g = cv.getContext('2d'); const W = cv.width, H = cv.height; g.clearRect(0, 0, W, H);
-  const y = (d) => H - 16 - ((Math.max(-105, Math.min(-35, d)) + 105) / 70) * (H - 32); const x = (i) => (i / 239) * W; const off = 240 - zbHist.length;
+  const y = (d) => H - 16 - ((Math.max(-105, Math.min(-35, d)) + 105) / 70) * (H - 32); const x = (i) => (i / 239) * W;
   g.font = '14px DM Mono, monospace'; g.fillStyle = '#8E8E93';
   for (const [d, col] of [[ZB_LEVELS.solid, 'rgba(47,191,113,.35)'], [ZB_LEVELS.marginal, 'rgba(227,167,47,.35)'], [-95, 'rgba(255,255,255,.07)'], [-55, 'rgba(255,255,255,.07)']]) { g.strokeStyle = col; g.setLineDash([4, 6]); g.beginPath(); g.moveTo(0, y(d)); g.lineTo(W, y(d)); g.stroke(); g.setLineDash([]); g.fillText(d + ' dBm', 6, y(d) - 4); }
-  g.strokeStyle = '#4bb9d3'; g.lineWidth = 2; g.beginPath(); let on = false; zbHist.forEach((h, i) => { if (h.best == null) { on = false; return; } const X = x(i + off); if (on) g.lineTo(X, y(h.best)); else g.moveTo(X, y(h.best)); on = true; }); g.stroke(); g.lineWidth = 1;
+  for (const n of pickedNodes('zb')) { const s = zbS[n.ip]; if (!s) continue; const off = 240 - s.hist.length;
+    g.strokeStyle = nodeCol(n); g.lineWidth = 2; g.beginPath(); let on = false; s.hist.forEach((h, i) => { if (h.best == null) { on = false; return; } const X = x(i + off); if (on) g.lineTo(X, y(h.best)); else g.moveTo(X, y(h.best)); on = true; }); g.stroke(); g.lineWidth = 1; }
 }
 function renderZbLog() {
   $('#zbLog').innerHTML = zbLog.length ? `<thead><tr><th>Where</th><th>Mesh</th><th>Best node</th><th>Signal</th><th>LQI</th><th>Nodes</th><th>Verdict</th><th>When</th><th></th></tr></thead><tbody>${zbLog.map((r, i) => { const [w, c] = zbVerdict(r.rssi); return `<tr><td>${esc(r.spot)}</td><td class="small">${esc(r.mesh || 'ch ' + r.ch)}</td><td class="mono">${esc(r.addr || '—')}</td><td class="mono">${r.rssi ?? '—'} dBm</td><td class="mono">${r.lqi ?? ''}</td><td class="mono">${r.nodes}</td><td><span class="pill ${c}">${w}</span></td><td class="small muted">${new Date(r.at).toLocaleString()}</td><td><button class="btn-sm" data-zbdel="${i}">✕</button></td></tr>`; }).join('')}</tbody>` : '';
@@ -1387,10 +1463,10 @@ function renderZbLog() {
   $('#zbProbeNote').textContent = `Draft grades on the strongest node heard at the spot: Solid ≥ ${ZB_LEVELS.solid} dBm, Marginal ≥ ${ZB_LEVELS.marginal} dBm, otherwise Fail (Zigbee radios reach about -100 dBm; these leave fade margin). Calibrate on the first unit. The probe hears node addresses, not names: names will come from the Takeoffs wireless plan. Tests are saved here and go up with the scan.`;
 }
 async function zbAuto() {   // opening the tab: survey the Wi-Fi if none yet, and ask the probe for the meshes once
-  fillZbProbe(); renderZbMeterCh(); fillSpot('zbSpot'); renderZbLog();
+  renderNodes('zb'); renderZbMeterCh(); renderZbLog();
   if (!survey && !$('#zbGo').disabled) $('#zbGo').click();
   if (!zbAutoDone) { zbFromProject(); zbReadHubs(); }
-  if (!zbAutoDone) { zbAutoDone = true; if (zbIp() && !zbFoundList.length) setTimeout(() => zbFind(true), 600); }
+  if (!zbAutoDone) { zbAutoDone = true; loadNodes(false).then(() => { if (pickedNodes('zb').length && !zbFoundList.length) zbFind(true); }); }
 }
 const zbUsed = () => ZB_SYS.map((x) => ({ ...x, ch: Number(zbMesh[x.k]) || null })).filter((m) => m.ch >= 11 && m.ch <= 26);
 function renderZbMeshes() {
@@ -1497,51 +1573,111 @@ function renderSurvey() {
 // ── RF tab (v1.6.1): RF bridges the scan found + the Sonor RF probe (ESP32 + CC1101, rf-probe/) ──
 // Guidance below is a first cut: the researched rules (rf-rules.json from the research thread) replace RF_GUIDE / RF_LEVELS.
 // rf.probe.grades (research 2026-11-24, heuristic: calibrate on the first unit): graded on the worse of level and margin
-let rfLog = store.get('rfLog', []); let rfTimer = null; let rfHist = []; let rfLast = null; let rfTesting = null;
-function rfStop() { clearInterval(rfTimer); rfTimer = null; }
+let rfLog = store.get('rfLog', []); let rfTimer = null; let rfS = {}; let rfTesting = null; let rfBusy = false;   // rfS: per probe ip { last, hist[] }
+function rfStop() { clearInterval(rfTimer); rfTimer = null; if ($('#rfGo')) $('#rfGo').textContent = 'Start'; }
 function renderRf() {
   const devs = (scanData && scanData.devices) || []; const br = []; for (const d of devs) { const g = RF_GUIDE.find((x) => x.test(d)); if (g && !g.zb) br.push([d, g]); }
   $('#rfBridges').innerHTML = br.length ? br.map(([d, g]) => guideCard(d, g)).join('') : `<p class="muted small">${devs.length ? 'No Bond, Somfy, Lutron or Shelly hubs in this scan. Zigbee hubs (Control4, Hue, Heatmiser) are on the Zigbee tab.' : 'No scan yet: run one on the Devices tab.'}</p>`;
-  const probes = devs.filter((d) => isProbe(d, 'rf'));
-  $('#rfProbeSel').innerHTML = probes.map((d) => `<option value="${esc(d.ip)}">${esc(nameOf(d) || 'RF probe')} · ${esc(d.ip)}</option>`).join('') + '<option value="">Type the IP…</option>';
-  $('#rfIp').hidden = !!$('#rfProbeSel').value; fillSpot('rfSpot'); renderRfLog();
+  renderNodes('rf'); renderRfLog();
   if (!store.get('rfFreqPicked', false)) { const f = rfFreqFor(br.map(([d]) => d)); if (f) $('#rfFreq').value = String(f); }
 }
-function rfIp() { return $('#rfProbeSel').value || $('#rfIp').value.trim(); }
+async function rfStart() {
+  const ps = pickedNodes('rf'); if (!ps.length) return toast('Switch an RF probe on, or tick one above', true);
+  clearInterval(rfTimer); rfTimer = null; rfS = {};
+  await Promise.all(ps.map((n) => api('rfProbe', { ip: n.ip, mhz: $('#rfFreq').value }).catch((e) => toast(`${nodeLabel(n)}: ${e.message}`, true))));
+  rfPoll(); rfTimer = setInterval(rfPoll, 300); $('#rfGo').textContent = 'Restart';
+}
 async function rfPoll() {
-  try { const r = await api('rfProbe', { ip: rfIp() }); rfLast = r; rfHist.push({ t: Date.now(), rssi: r.rssi, floor: r.floor, peak: r.peak }); rfHist = rfHist.slice(-300);
-    if (rfTesting && r.peak > rfTesting.peak) rfTesting.peak = r.peak; if (rfTesting) rfTesting.floor = Math.min(rfTesting.floor, r.floor);
-    drawRf(); const m = r.peak - r.floor; const [w, cls] = rfVerdict(rfTesting ? null : null);
-    $('#rfNow').innerHTML = [['Now', `${r.rssi} dBm`, `${r.mhz} MHz`], ['Noise floor', `${r.floor} dBm`, 'quietest 20% of the last 2 s'], ['Bursts heard', r.bursts, 'since the probe started'], ['Probe', r.battery > 0 ? (r.battery / 1000).toFixed(2) + ' V' : 'USB', `${esc(r.ssid || 'own hotspot')}${r.wifiRssi ? ' · Wi-Fi ' + r.wifiRssi + ' dBm' : ''} · v${esc(r.v || '')}`]].map(([l, b, n]) => `<div class="gcard"><div class="lbl">${l}</div><div class="big">${esc(String(b))}</div><div class="ln">${n}</div></div>`).join('');
-    void m; void w; void cls;
-  } catch (e) { $('#rfNote').textContent = e.message; }
+  if (rfBusy) return; rfBusy = true; const ps = pickedNodes('rf');
+  await Promise.all(ps.map(async (n) => { const s = rfS[n.ip] = rfS[n.ip] || { hist: [] };
+    try { const r = await api('rfProbe', { ip: n.ip }); s.last = r; s.err = ''; s.hist.push({ peak: r.peak, floor: r.floor }); s.hist = s.hist.slice(-300);
+      const t = rfTesting && rfTesting[n.ip]; if (t) { t.peak = Math.max(t.peak, r.peak); t.floor = Math.min(t.floor, r.floor); }
+    } catch (e) { s.err = e.message; } }));
+  rfBusy = false; drawRf();
+  $('#rfNow').innerHTML = ps.map((n) => { const s = rfS[n.ip]; const r = s && s.last; if (!r) return tileN(n, '—', esc((s && s.err) || 'waiting…'));
+    return tileN(n, `${r.rssi} dBm`, `noise ${r.floor} dBm · ${r.bursts} bursts · ${r.mhz} MHz · ${r.battery > 0 ? (r.battery / 1000).toFixed(2) + ' V' : 'USB'}${s.err ? ' · <span style="color:var(--bad)">' + esc(s.err) + '</span>' : ''}`); }).join('');
 }
 function drawRf() {
   const cv = $('#rfGraph'); const g = cv.getContext('2d'); const W = cv.width, H = cv.height; g.clearRect(0, 0, W, H);
   const y = (d) => H - 20 - ((Math.max(-120, Math.min(-20, d)) + 120) / 100) * (H - 40); const x = (i) => (i / 299) * W;
   g.strokeStyle = 'rgba(255,255,255,.07)'; g.fillStyle = '#8E8E93'; g.font = '15px DM Mono, monospace'; for (const d of [-110, -90, -70, -50, -30]) { g.beginPath(); g.moveTo(0, y(d)); g.lineTo(W, y(d)); g.stroke(); g.fillText(d + ' dBm', 6, y(d) - 4); }
-  const off = 300 - rfHist.length;
-  g.strokeStyle = '#e3a72f'; g.setLineDash([6, 6]); g.beginPath(); rfHist.forEach((h, i) => { const X = x(i + off); i ? g.lineTo(X, y(h.floor)) : g.moveTo(X, y(h.floor)); }); g.stroke(); g.setLineDash([]);
-  g.strokeStyle = '#4bb9d3'; g.lineWidth = 2; g.beginPath(); rfHist.forEach((h, i) => { const X = x(i + off); i ? g.lineTo(X, y(h.peak)) : g.moveTo(X, y(h.peak)); }); g.stroke(); g.lineWidth = 1;
+  for (const n of pickedNodes('rf')) { const s = rfS[n.ip]; if (!s) continue; const off = 300 - s.hist.length; const col = nodeCol(n);
+    g.strokeStyle = col + '88'; g.setLineDash([6, 6]); g.beginPath(); s.hist.forEach((h, i) => { const X = x(i + off); i ? g.lineTo(X, y(h.floor)) : g.moveTo(X, y(h.floor)); }); g.stroke(); g.setLineDash([]);
+    g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); s.hist.forEach((h, i) => { const X = x(i + off); i ? g.lineTo(X, y(h.peak)) : g.moveTo(X, y(h.peak)); }); g.stroke(); g.lineWidth = 1; }
 }
 function renderRfLog() {
   $('#rfLog').innerHTML = rfLog.length ? `<thead><tr><th>Where</th><th>MHz</th><th>Peak</th><th>Floor</th><th>Margin</th><th>Verdict</th><th>When</th><th></th></tr></thead><tbody>${rfLog.map((r, i) => { const [w, c] = rfVerdict(r.margin, r.peak); return `<tr><td>${esc(r.spot)}</td><td class="mono">${r.mhz}</td><td class="mono">${r.peak} dBm</td><td class="mono">${r.floor} dBm</td><td class="mono"><b>${r.margin} dB</b></td><td><span class="pill ${c}">${w}</span></td><td class="small muted">${new Date(r.at).toLocaleString()}</td><td><button class="btn-sm" data-rfdel="${i}">✕</button></td></tr>`; }).join('')}</tbody>` : '';
   $('#rfLog').querySelectorAll('[data-rfdel]').forEach((b) => b.onclick = () => { rfLog.splice(Number(b.dataset.rfdel), 1); store.set('rfLog', rfLog); renderRfLog(); });
   $('#rfNote').textContent = `Graded on the worse of level and margin above the noise at that spot: Solid ≥ ${RF_LEVELS.solid.dbm} dBm and ${RF_LEVELS.solid.margin} dB, Marginal ≥ ${RF_LEVELS.marginal.dbm} dBm and ${RF_LEVELS.marginal.margin} dB, otherwise Fail. Cheap modules differ in absolute dBm, so trust the margin and calibrate the first unit. Usual 433 MHz interferers: car fobs, weather stations, doorbells, alarm sensors, LED drivers. Tests are saved here and go up with the scan.`;
 }
-$('#rfProbeSel').onchange = () => { $('#rfIp').hidden = !!$('#rfProbeSel').value; };
 $('#rfFreq').innerHTML = RF_FREQS.map((f) => `<option value="${f.mhz}">${esc(f.label)}</option>`).join('');
 $('#rfFreq').onchange = () => store.set('rfFreqPicked', true);
-$('#rfGo').onclick = async () => { if (!rfIp()) return toast('Pick or type the probe IP', true); rfStop(); rfHist = []; try { await api('rfProbe', { ip: rfIp(), mhz: $('#rfFreq').value }); } catch (e) { return toast(e.message, true); } rfPoll(); rfTimer = setInterval(rfPoll, 250); $('#rfGo').textContent = 'Reconnect'; };
+$('#rfGo').onclick = rfStart;
 $('#rfTest').onclick = async () => {
-  if (!rfTimer) return toast('Connect to the probe first', true); const spot = spotVal('rfSpot') || 'Spot ' + (rfLog.length + 1);
-  rfTesting = { peak: -120, floor: rfLast ? rfLast.floor : -110 }; const b = $('#rfTest'); b.disabled = true;
+  if (!rfTimer) return toast('Press Start first', true); const ps = pickedNodes('rf').filter((n) => rfS[n.ip] && rfS[n.ip].last); if (!ps.length) return toast('No probe is answering', true);
+  rfTesting = Object.fromEntries(ps.map((n) => [n.ip, { peak: -120, floor: rfS[n.ip].last.floor }])); const b = $('#rfTest'); b.disabled = true;
   for (let s = 5; s > 0; s--) { b.textContent = `Press the remote now… ${s}`; await new Promise((r) => setTimeout(r, 1000)); }
-  const t = rfTesting; rfTesting = null; b.disabled = false; b.textContent = 'Test a press';
-  const margin = t.peak - t.floor; const [w] = rfVerdict(margin, t.peak);
-  rfLog.unshift({ spot, mhz: rfLast ? rfLast.mhz : Number($('#rfFreq').value), peak: t.peak, floor: t.floor, margin, at: new Date().toISOString(), probe: rfIp() }); store.set('rfLog', rfLog); renderRfLog();
-  toast(`${spot}: ${margin} dB above the noise · ${w}`);
+  const t = rfTesting; rfTesting = null; b.disabled = false; b.textContent = 'Test a press'; const at = new Date().toISOString();
+  const rows = ps.map((n) => { const x = t[n.ip]; const margin = x.peak - x.floor; return { spot: nodeLabel(n), mhz: rfS[n.ip].last.mhz, peak: x.peak, floor: x.floor, margin, at, probe: n.ip, probeId: n.id || '' }; });
+  rfLog.unshift(...rows); store.set('rfLog', rfLog); renderRfLog();
+  toast(rows.map((r) => `${r.spot}: ${r.margin} dB · ${rfVerdict(r.margin, r.peak)[0]}`).join(' · '));
 };
+
+// ── Art-Net tab (v1.6.9): ArtPoll + sACN universe discovery, discovery and info only (DMX testing = the Sonor Art-Net app) ──
+// Rules: research net-scanner/research/artnet-dmx-rules.json (st.*, an.*, sa.*); faults from data/artnet-faults.js.
+let an = store.get('an', { nodes: [], dmx: [], sacn: [], at: null, sacnAt: null }); let anTimer = null, anBusy = false, anMiss = {}, anLocals = [];
+const ARTNET_APP = /Android/i.test(navigator.userAgent) ? 'uk.co.sonor.artnet://open' : '';   // Sonor Art-Net app deep link (?ip=&u=, Art-Net universe from 0; opens its Test tab). Android only: a browser can't send UDP
+const anU = (u) => `${u} <span class="muted">· sACN ${u + 1}</span>`;
+async function anPoll(quiet) {
+  if (anBusy) return; anBusy = true; const b = $('#anGo'); if (!quiet) { b.disabled = true; b.textContent = 'Polling…'; }
+  try { const r = await api('artnet', { op: 'poll' }); if (r.error) throw new Error(r.error); anLocals = r.locals || anLocals;
+    const seen = new Set(r.nodes.map((n) => n.mac || n.ip));
+    // a node is lost after 3 missed polls (an.poll.timing): keep it on the list, greyed, until then
+    const kept = an.nodes.filter((n) => !seen.has(n.mac || n.ip)).map((n) => { const k = n.mac || n.ip; anMiss[k] = (anMiss[k] || 0) + 1; return { ...n, lost: anMiss[k] >= 3, missed: anMiss[k] }; }).filter((n) => anMiss[n.mac || n.ip] < 20);
+    for (const k of seen) anMiss[k] = 0;
+    an = { ...an, nodes: [...r.nodes.map((n) => ({ ...n, lost: false, missed: 0 })), ...kept], dmx: r.dmx, at: new Date().toISOString() }; store.set('an', an); renderArtnet();
+  } catch (e) { if (!quiet) toast(e.message, true); $('#anSum').textContent = e.message; }
+  anBusy = false; if (!quiet) { b.disabled = false; b.textContent = 'Look again'; }
+}
+async function anSacn() {
+  const b = $('#anSacn'); b.disabled = true; let s = 11; const t = setInterval(() => { b.textContent = `Listening for sACN… ${--s}`; }, 1000); b.textContent = 'Listening for sACN… 11';
+  const want = [...new Set(an.nodes.flatMap((n) => n.ports.filter((p) => p.output).map((p) => p.outUniverse + 1)))];
+  try { const r = await api('artnet', { op: 'sacn', universes: want }); if (r.error) toast(r.error, true); an = { ...an, sacn: r.sources || [], sacnAt: new Date().toISOString() }; store.set('an', an); renderArtnet(); } catch (e) { toast(e.message, true); }
+  clearInterval(t); b.disabled = false; b.textContent = 'Listen for sACN again';
+}
+function anStop() { clearInterval(anTimer); anTimer = null; }
+function anLive(on) { anStop(); $('#anLive').checked = on; store.set('anLive', on); if (on) anTimer = setInterval(() => { if (!document.hidden) anPoll(true); }, 3000); }
+function renderArtnet() {
+  const F = ArtnetFaults.flags({ nodes: an.nodes.filter((n) => !n.lost), dmx: an.dmx, sacn: an.sacn, localCidrs: anLocals });
+  $('#anFlags').innerHTML = F.map((f) => `<div class="gflag ${f.level}">${esc(f.text)}</div>`).join('');
+  const outs = an.nodes.reduce((a, n) => a + n.ports.filter((p) => p.output).length, 0);
+  $('#anSum').textContent = an.at ? `${an.nodes.filter((n) => !n.lost).length} node${an.nodes.length === 1 ? '' : 's'} · ${outs} DMX output${outs === 1 ? '' : 's'} · ${an.sacn.length} sACN source${an.sacn.length === 1 ? '' : 's'} · polled ${new Date(an.at).toLocaleTimeString()}` : 'Not polled yet';
+  const scanDev = (ip) => ((scanData && scanData.devices) || []).find((d) => d.ip === ip);
+  $('#anNodes').innerHTML = an.nodes.length ? `<thead><tr><th></th><th>Node</th><th>Address</th><th>Maker · firmware</th><th>DMX ports</th><th>Status</th><th></th></tr></thead><tbody>${an.nodes.map((n) => {
+    const dot = n.lost ? 'var(--bad)' : n.missed || F.some((f) => f.id === 'an.addr.2x' && f.text.includes(n.ip)) ? 'var(--warn)' : 'var(--ok)'; const d = scanDev(n.ip);
+    const ports = n.ports.map((p) => `<div class="small">${p.n}. ${p.output ? 'Out' : 'In'} ${anU(p.output ? p.outUniverse : p.inUniverse)} ${p.output ? `<span class="pill ${p.outData ? 'ok' : 'info'}">${p.outData ? 'data' : 'no data'}</span>${p.outMerging ? ' <span class="pill warn">merging</span>' : ''}${p.outSacn ? ' <span class="pill info">sACN</span>' : ''}` : ''}${p.protocol !== 'DMX512' ? ' ' + esc(p.protocol) : ''}</div>`).join('');
+    const rep = (n.report || '').replace(/^#([0-9a-f]{4})\s*\[[0-9a-f]+\]\s*/i, (m, c) => (c.toLowerCase() === '0001' ? '' : `#${c} `));
+    return `<tr${n.lost ? ' style="opacity:.55"' : ''}><td><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${dot}" title="${n.lost ? 'lost (3 polls missed)' : n.missed ? 'missed ' + n.missed + ' poll(s)' : 'online'}"></span></td>
+      <td><b>${esc(n.shortName || '—')}</b><div class="muted small">${esc(n.longName || '')}${d && nameOf(d) && nameOf(d) !== n.shortName ? ' · ' + esc(nameOf(d)) : ''}</div></td>
+      <td class="mono small">${esc(n.ip)}<div class="muted">${n.dhcp ? 'DHCP' : 'static'} · ${esc(n.mac || '')}</div></td>
+      <td class="small">${esc(n.maker || 'ESTA ' + n.esta)}<div class="muted">OEM ${esc(n.oem)} · fw ${esc(n.firmware)} · ${esc(n.style)}${n.rdm ? ' · RDM' : ''}</div></td>
+      <td>${ports || '<span class="muted small">no DMX ports</span>'}</td>
+      <td class="small">${esc(rep || 'OK')}${n.indicator === 'locate' ? ' <span class="pill warn">locating</span>' : ''}</td>
+      <td><button class="btn-sm" data-anloc="${esc(n.ip)}" data-anbind="${n.bindIndex || 0}" data-anon="${n.indicator === 'locate' ? 0 : 1}">${n.indicator === 'locate' ? 'Stop' : 'Locate'}</button>${ARTNET_APP ? ` <a class="btn-sm" href="${ARTNET_APP}?ip=${encodeURIComponent(n.ip)}&u=${(n.ports.find((p) => p.output) || {}).outUniverse ?? ''}">Test in DMX app</a>` : ''}${n.webConfig ? ` <a class="btn-sm" href="http://${esc(n.ip)}/" target="_blank" rel="noopener">Web</a>` : ''}</td></tr>`; }).join('')}</tbody>`
+    : `<tbody><tr><td class="muted small">${an.at ? 'No Art-Net node answered. Check it is powered, on this network or VLAN, and that this computer\'s firewall lets UDP 6454 in.' : 'Polling…'}</td></tr></tbody>`;
+  // universes: who sends, who listens
+  const U = new Map(); const get = (u) => U.get(u) || (U.set(u, { u, send: [], out: [] }), U.get(u));
+  for (const d of an.dmx) get(d.universe).send.push(`Art-Net ${d.src} · ${d.hz} Hz${d.seqErr ? ' · ' + d.seqErr + ' out of order' : ''}`);
+  for (const s of an.sacn) for (const u of s.universes) { const x = (s.data || {})[u] || {}; get(u - 1).send.push(`sACN ${s.source || s.ip} · priority ${x.priority ?? s.priority ?? '?'}${x.hz ? ' · ' + x.hz + ' Hz' : ''}${x.pap ? ' · per-channel priority' : ''}`); }
+  for (const n of an.nodes) for (const p of n.ports) if (p.output) get(p.outUniverse).out.push(`${n.shortName || n.ip} port ${p.n}`);
+  const rows = [...U.values()].sort((a, b) => a.u - b.u);
+  $('#anUnis').innerHTML = rows.length ? `<thead><tr><th>Universe</th><th>Sent by</th><th>Output on</th><th></th></tr></thead><tbody>${rows.map((r) => { const st = r.send.length > 2 ? ['bad', '3+ sources'] : r.send.length === 2 ? ['warn', 'merging'] : !r.send.length ? ['info', 'nothing sent'] : !r.out.length ? ['info', 'no node outputs it'] : ['ok', 'OK'];
+    return `<tr><td class="mono">${anU(r.u)}</td><td class="small">${r.send.map(esc).join('<br>') || '—'}</td><td class="small">${r.out.map(esc).join('<br>') || '—'}</td><td><span class="pill ${st[0]}">${st[1]}</span></td></tr>`; }).join('')}</tbody>` : '';
+  $('#anSacnNote').textContent = an.sacnAt ? `sACN listened ${new Date(an.sacnAt).toLocaleTimeString()} (sources announce their universes every 10 s; a source that doesn't send discovery shows only if a node here outputs its universe).` : 'sACN not listened to yet.';
+  $('#anNodes').querySelectorAll('[data-anloc]').forEach((b) => b.onclick = async () => { try { await api('artnet', { op: 'locate', ip: b.dataset.anloc, on: Number(b.dataset.anon), bindIndex: Number(b.dataset.anbind) }); toast(b.dataset.anon === '1' ? 'Locate sent: the node flashes its lights' : 'Locate off'); setTimeout(() => anPoll(true), 600); } catch (e) { toast(e.message, true); } });
+}
+function anAuto() { renderArtnet(); anPoll(false); if (!an.sacnAt || Date.now() - new Date(an.sacnAt) > 10 * 60000) setTimeout(anSacn, 400); anLive(store.get('anLive', true)); }
+$('#anGo').onclick = () => anPoll(false); $('#anSacn').onclick = anSacn; $('#anLive').onchange = (e) => anLive(e.target.checked);
 
 // ── IP schedule (paper) ───────────────────────────────────
 function renderSchedule() {
@@ -1562,10 +1698,12 @@ function renderSchedule() {
 // ── Wiring ────────────────────────────────────────────────
 document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
   document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
-  for (const t of ['devices', 'discovery', 'issues', 'check', 'wifi', 'zigbee', 'rf', 'tools', 'schedule']) $('#tab-' + t).hidden = b.dataset.tab !== t;
+  for (const t of ['devices', 'discovery', 'issues', 'check', 'wifi', 'zigbee', 'rf', 'artnet', 'tools', 'schedule']) $('#tab-' + t).hidden = b.dataset.tab !== t;
   hideTip(); if (b.dataset.tab !== 'wifi' && wTimer) wStop();
   if (b.dataset.tab === 'check' && $('#projPick').options.length < 2) loadProjects();
-  if (b.dataset.tab === 'rf') renderRf(); else rfStop();
+  if (b.dataset.tab === 'rf') { renderRf(); loadNodes(false); } else rfStop();
+  nodesWatch(['rf', 'zigbee'].includes(b.dataset.tab));
+  if (b.dataset.tab === 'artnet') anAuto(); else anStop();
   if (b.dataset.tab === 'zigbee') { renderZigbee(); zbAuto(); } else zbStop();
   store.set('tab', b.dataset.tab);
 });
@@ -1591,15 +1729,15 @@ $('#walkCsv').onclick = walkCsv; $('#walkSpeed').checked = store.get('walkSpeed'
 $('#walkClear').onclick = () => { if (!walk.length || reviewWalk) return; if (!confirm(`Clear all ${walk.length} readings?`)) return; walk = []; store.set('walk', walk); renderWalk(); };
 $('#survGo').onclick = runSurvey; $('#survMine').onchange = renderSurvey; $('#survQ').oninput = renderSurvey;
 renderZbMeshes(); renderZbMeterCh();
-$('#zbProbeSel').onchange = () => { $('#zbIp').hidden = !!$('#zbProbeSel').value; };
 $('#zbFind').onclick = () => zbFind(false); $('#zbSweep').onclick = zbSweep;
-$('#zbMeterCh').onchange = () => { store.set('zbMeterCh', $('#zbMeterCh').value); if (zbTimer) { zbHist = []; zbPoll(true); } };
-$('#zbMeter').onclick = () => { if (zbTimer) return zbStop(); if (!zbIp()) return toast('Pick the Zigbee probe', true); zbHist = []; zbPoll(true); zbTimer = setInterval(() => zbPoll(false), 500); $('#zbMeter').textContent = 'Stop meter'; };
+$('#zbMeterCh').onchange = () => { store.set('zbMeterCh', $('#zbMeterCh').value); if (zbTimer) { zbS = {}; zbPoll(true); } };
+$('#zbMeter').onclick = () => { if (zbTimer) return zbStop(); if (!pickedNodes('zb').length) return toast('Switch a Zigbee probe on, or tick one above', true); zbS = {}; zbPoll(true); zbTimer = setInterval(() => zbPoll(false), 500); $('#zbMeter').textContent = 'Stop meter'; };
 $('#zbTest').onclick = () => {
-  if (!zbTimer || !zbLast) return toast('Start the meter first', true); const spot = spotVal('zbSpot') || 'Spot ' + (zbLog.length + 1);
-  const live = (zbLast.nodes || []).filter((n) => n.agoMs < 15000 && n.n >= 2).sort((a, b) => b.rssi - a.rssi); const best = live[0];
-  zbLog.unshift({ spot, ch: zbLast.ch, mesh: zbMeshName(zbLast.ch), addr: best ? best.addr : null, rssi: best ? best.rssi : null, lqi: best ? best.lqi : null, nodes: live.length, at: new Date().toISOString(), probe: zbIp() });
-  store.set('zbLog', zbLog); renderZbLog(); const [w] = zbVerdict(best && best.rssi); toast(`${spot}: ${best ? best.rssi + ' dBm from ' + best.addr : 'no node heard'} · ${w}`);
+  if (!zbTimer || !zbLast) return toast('Start the meter first', true); const at = new Date().toISOString(); const rows = [];
+  for (const n of pickedNodes('zb')) { const s = zbS[n.ip]; if (!s || !s.last) continue; const live = (s.live || []).filter((x) => x.n >= 2); const best = live[0];
+    rows.push({ spot: nodeLabel(n), ch: zbLast.ch, mesh: zbMeshName(zbLast.ch), addr: best ? best.addr : null, rssi: best ? best.rssi : null, lqi: best ? best.lqi : null, nodes: live.length, at, probe: n.ip, probeId: n.id || '' }); }
+  if (!rows.length) return toast('No probe is answering', true);
+  zbLog.unshift(...rows); store.set('zbLog', zbLog); renderZbLog(); toast(rows.map((r) => `${r.spot}: ${r.rssi != null ? r.rssi + ' dBm' : 'nothing'} · ${zbVerdict(r.rssi)[0]}`).join(' · '));
   zbPoll(true);
 };
 // Live spectrum: re-survey while the Wi-Fi tab is open. Android allows about 4 Wi-Fi scans per 2 minutes in the foreground,

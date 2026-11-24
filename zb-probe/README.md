@@ -33,3 +33,10 @@ It restarts on the site Wi-Fi and appears in the Zigbee tab's probe dropdown (`_
 - Noise sweep: 8 windows of 8 ms per channel, max (bursts) and median (background). Grades: clear below -85 dBm, busy -85 to -70, bad above -70; a channel whose median is within 10 dB of the weakest node fails.
 - It hears node short addresses, not names: names come from the Takeoffs wireless plan once that module exists.
 - Not yet tested on hardware.
+
+## Several probes on one site (v1.2.0)
+Put as many Zigbee probes round the house as you like (battery units at the blinds or keypads, one wired near the rack).
+Each says who it is (`/info`: id from its MAC, name, battery, Wi-Fi) and remembers **where it is** (`/spot?name=…`,
+set from the scanner's room list, kept across restarts and published in its mDNS TXT). **Identify** (`/identify`) blinks
+its LED for 5 s so you can match the unit in your hand to the one on screen. The scanner's Pi or laptop agent keeps
+looking for probes every 20 s while the RF or Zigbee tab is open, so a probe switched on mid-visit just appears.

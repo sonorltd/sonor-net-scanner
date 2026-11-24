@@ -1,4 +1,4 @@
-# Sonor Network Scanner · v1.6.7
+# Sonor Network Scanner · v1.6.9
 
 A commissioning scanner for AV / Control4 sites. It finds every device on the network and says what it is in AV terms (make, model, firmware, serial where the device publishes it), checks the site against the project's plan in the Network Map app, and prints an as-found IP schedule.
 
@@ -71,6 +71,20 @@ Not done yet: hosting the page at apps.sonor.co.uk (needs the `sonorltd/sonor-ne
 - **Check against project** shows the project's uploaded scans (one master table, filtered per project) and the office's Unassigned
   list (attach to a project). **Review** opens an uploaded scan here; Fill MACs / Mark reviewed calls `net_scan_apply`, which writes
   the revision note into Network Map's history (`sonor_revisions`, app `network-map`: who scanned, who reviewed, what changed).
+
+## v1.6.9 (2026-11-24): Art-Net tab (discovery and info)
+- `lib/artnet.js`: ArtPoll to 2.255.255.255, 10.255.255.255 and each local broadcast (never 255.255.255.255), flags "reply on change", sent twice; ArtPollReply parsed by the research offsets (>= 207 bytes), grouped by MAC across BindIndex; ArtDmx heard while listening (source, universe, Hz, out-of-order count); sACN universe discovery on 239.255.250.214:5568 for 11 s, plus sniffing of the universes the nodes output (priority, Hz, per-channel priority, sequence errors); ArtAddress Locate / normal.
+- Every scan now also polls Art-Net, so nodes are named in the device list ("Art-Net node", lighting) and saved in the scan (`artnet`). `_rdmnet._tcp` added to mDNS.
+- Art-Net tab: auto poll on open and Live every 3 s (a node is lost after 3 missed polls), sACN listen, faults (`data/artnet-faults.js`, shared by the page and agents: 2.x/10.x addressing outside the LAN, broadcast ArtDmx, 2 or 3+ sources, equal sACN priority, off-by-one universe, outputs with no data, merging, IGMP querier hint, low rate, sequence errors), node table (status dot, names, IP + DHCP/static, MAC, maker/OEM/firmware, ports with Art-Net and sACN numbers, data/merge flags, node report, Locate, Web), and universe table (who sends, who outputs). Uploads as `netinfo.artnet`.
+- Full DMX channel testing is the separate Sonor Art-Net app; its deep link goes in `ARTNET_APP` once that app is registered. The codec here becomes the shared `sonor-artnet.js` when it lands.
+
+## v1.6.8 (2026-11-24): several probes at once, found by themselves
+- Sonor node scheme (`SonorWireless.NODE`, module 1.2.0): every probe advertises `_sonor-node._tcp` (TXT id, kind, caps, spot) and answers `GET /info`, `/identify` (blinks 5 s) and `/spot?name=`. rf-probe and zb-probe firmware 1.2.0.
+- Agent actions `nodes` (mDNS + the last scan + typed IPs, /info each, cached 15 s) and `node` (info / identify / spot). The Android agent lists probes from the scan and typed IPs (no mDNS browse yet).
+- RF and Zigbee tabs: probe cards refresh every 20 s. Tick the ones to use, pick where each sits from the Takeoffs rooms or devices found (saved on the probe), and press Identify to blink one.
+- RF: every ticked probe draws its own line, and **Test a press** logs one row per probe at its spot.
+- Zigbee: Find meshes and Noise sweep merge every probe (the strongest copy of each mesh, the loudest noise per channel and where). Meter shows one tile per probe and a "Heard by" column per node, and **Test here** logs each probe at its spot.
+- Typical rig: a rack Pi on wired LAN runs the agent, a USB probe sits in the rack, and battery ESP32s go out to keypads and motors.
 
 ## v1.6.7 (2026-11-24): research round 2, no-typing Zigbee
 - **Channels read from the hubs**: the neoHub's Zigbee channel over its legacy API (TCP 4242, `GET_SYSTEM`), the Hue bridge's over its API (one press of the bridge button pairs it, the key is kept), Control4's from the project's last upload (Control4 has no LAN source). Then the probe's beacon scan is matched by `SonorWireless.autoMatch`: hub channel first, Thread by ext PAN, maker code as a hint, a pre-filled list last.

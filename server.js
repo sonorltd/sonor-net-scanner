@@ -14,7 +14,7 @@ const tools = require('./lib/tools');
 const { netinfo, speedtest } = require('./lib/netinfo');
 const wifi = require('./lib/wifi');
 
-const VERSION = '1.6.7';
+const VERSION = '1.6.9';
 const PORT = Number(process.env.PORT || 8050);
 const DATA = process.env.NETSCAN_DATA || path.join(__dirname, 'scans');
 const PUBLIC = path.join(__dirname, 'public');
@@ -48,6 +48,7 @@ latest = (() => { const l = listScans()[0]; return l ? loadScan(l.id) : null; })
 if (latest) state.lastId = latest.id;
 
 const W = require('./public/data/sonor-wireless.js');
+let nodeCache = null;
 async function probeGet(kind, ip, args) {
   if (!net.isIp(ip || '')) return [400, { error: 'pick the probe or enter its IPv4 address' }];
   const { path, timeout } = W.probePath(kind, args);
@@ -108,6 +109,37 @@ const actions = {
   // RF / Zigbee tabs: read a Sonor probe on the site network (paths from the shared data/sonor-wireless.js). The agent fetches it so an https page can too.
   rfProbe: async ({ ip, mhz } = {}) => probeGet('rf', ip, { mhz }),
   zbProbe: async ({ ip, op, ch, reset } = {}) => probeGet('zb', ip, { op, ch, reset }),
+  // Site nodes (Sonor node scheme, sonor-wireless.js NODE): every probe / capture node on the LAN, found by mDNS + the last scan,
+  // asked for /info. Cached 15 s; the page asks every 20 s while the RF or Zigbee tab is open, so a probe switched on mid-visit appears.
+  nodes: async ({ fresh, extra } = {}) => {
+    const add = (Array.isArray(extra) ? extra : []).filter((ip) => net.isIp(String(ip))).slice(0, 20);
+    if (!fresh && !add.some((ip) => !((nodeCache && nodeCache.nodes) || []).some((n) => n.ip === ip)) && nodeCache && Date.now() - nodeCache.at < 15000) return [200, nodeCache];
+    const ips = new Set(); const types = [W.NODE.service, W.PROBES.rf.service, W.PROBES.zb.service];
+    try { const m = await require('./lib/discovery').mdns(2500); for (const [ip, h] of m) if (((h && h.services) || []).some((x) => types.includes(x.type))) ips.add(ip); } catch {}
+    for (const d of (latest && latest.devices) || []) if (W.probeKindOf(d)) ips.add(d.ip);
+    for (const n of (nodeCache && nodeCache.nodes) || []) ips.add(n.ip);
+    for (const ip of add) ips.add(ip);
+    const old = new Map(((nodeCache && nodeCache.nodes) || []).map((n) => [n.ip, n]));
+    const nodes = (await Promise.all([...ips].filter((ip) => net.isIp(ip)).map(async (ip) => {
+      try { const [, r] = await probeGet('rf', ip, { op: 'info' }); return { ...r, ip, online: true, seen: new Date().toISOString() }; }
+      catch { const d = ((latest && latest.devices) || []).find((x) => x.ip === ip); const o = old.get(ip);
+        if (o) return { ...o, online: false }; if (d && W.probeKindOf(d)) return { ip, kind: W.probeKindOf(d) === 'zb' ? 'zigbee' : 'rf', id: (d.mac || '').replace(/:/g, ''), name: d.name || d.kind, spot: '', online: false, legacy: true }; return null; }
+    }))).filter(Boolean).sort((a, b) => String(a.kind).localeCompare(b.kind) || String(a.spot || a.name).localeCompare(b.spot || b.name));
+    nodeCache = { at: Date.now(), nodes }; return [200, nodeCache];
+  },
+  node: async ({ ip, op, spot } = {}) => { if (!['info', 'identify', 'spot'].includes(op)) return [400, { error: 'op must be info, identify or spot' }]; const r = await probeGet('rf', ip, { op, spot }); if (op === 'spot' && nodeCache) nodeCache.at = 0; return r; },
+
+  // Art-Net tab: ArtPoll (2.x, 10.x and each local broadcast, never 255.255.255.255) + sACN universe discovery. Discovery and info only:
+  // DMX testing is the Sonor Art-Net app. op poll (3 s) | sacn (11 s, also sniffs the universes given) | locate (ArtAddress to one node).
+  artnet: async ({ op = 'poll', universes, ip, on, bindIndex } = {}) => {
+    const A = require('./lib/artnet'); const locals = net.localSubnets();
+    const bc = (c) => { const [b, bits] = c.split('/'); return net.intToIp((net.ipToInt(b) | (2 ** (32 - Number(bits)) - 1)) >>> 0); };
+    if (op === 'locate') { if (!net.isIp(ip || '')) return [400, { error: 'pick the node' }]; return [200, await A.locate(ip, on !== false && on !== 0 && on !== '0', Number(bindIndex) || 0)]; }
+    if (op === 'sacn') { const r = await A.sacn({ universes: (Array.isArray(universes) ? universes : []).map(Number).filter((u) => u >= 1 && u <= 63999) }); if (latest) { latest.artnet = { ...(latest.artnet || {}), sacn: r.sources, sacnAt: new Date().toISOString() }; saveScan(latest); } return [200, r]; }
+    const r = await A.poll({ broadcasts: ['2.255.255.255', '10.255.255.255', ...locals.map((l) => bc(l.cidr))], timeoutMs: 3000, locals: locals.map((l) => l.address) });
+    if (latest && !r.error) { latest.artnet = { ...(latest.artnet || {}), at: new Date().toISOString(), nodes: r.nodes, dmx: r.dmx }; saveScan(latest); }
+    return [200, { ...r, locals: locals.map((l) => l.cidr) }];
+  },
 
   // Zigbee channels read straight from the hubs, so nobody types them (research zbm.lan.*).
   // neoHub legacy API: TCP 4242, JSON + NUL, no token (off unless enabled in the Heatmiser app). The channel field name is

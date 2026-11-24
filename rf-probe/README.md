@@ -33,3 +33,10 @@ Pick the frequency (RTS 433.42, 433.92, 315, 868.3), put the probe at the motor,
 location name and uploaded with the scan.
 
 Grades (research `rf.probe.grades`, heuristic): Solid ≥ -80 dBm and 20 dB over the floor; Marginal ≥ -95 dBm and 10 dB; otherwise Fail, graded on the worse of the two. Cheap modules differ in absolute dBm (RSSI → dBm = raw/2 − 74 at 433 MHz, done by the library), so trust the margin and calibrate the first unit against a known-good blind. UK Lutron and Somfy io are 868 MHz: use the 868 module.
+
+## Several probes on one site (v1.2.0)
+Put as many RF probes round the house as you like (battery units at the blinds or keypads, one wired near the rack).
+Each says who it is (`/info`: id from its MAC, name, battery, Wi-Fi) and remembers **where it is** (`/spot?name=…`,
+set from the scanner's room list, kept across restarts and published in its mDNS TXT). **Identify** (`/identify`) blinks
+its LED for 5 s so you can match the unit in your hand to the one on screen. The scanner's Pi or laptop agent keeps
+looking for probes every 20 s while the RF or Zigbee tab is open, so a probe switched on mid-visit just appears.

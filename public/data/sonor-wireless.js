@@ -1,4 +1,4 @@
-/* sonor-wireless.js v1.1.0 (2026-11-24) — the ONE wireless toolkit for every Sonor app (window.SonorWireless, or require()).
+/* sonor-wireless.js v1.2.0 (2026-11-24) — the ONE wireless toolkit for every Sonor app (window.SonorWireless, or require()).
  * Wi-Fi ↔ Zigbee channel maths, the mesh systems and their maker codes, RF / Zigbee hub guidance, the probe grades,
  * the RF frequencies and the Sonor probe HTTP paths. Used by Network Scanner (page, Pi agent, Android agent) and meant
  * for Takeoffs' wireless planning layer, Site and Remotes, so a channel, a grade or a hub tip means the same everywhere.
@@ -87,20 +87,31 @@ const rfVerdict = (m, peak) => { if (m == null) return ['—', '']; const p = pe
     rf: { service: '_sonor-rf._tcp', kind: 'Sonor RF probe', hotspot: 'Sonor-RF-Probe' },
     zb: { service: '_sonor-zb._tcp', kind: 'Sonor Zigbee probe', hotspot: 'Sonor-ZB-Probe' },
   };
+  // ONE node scheme for every Sonor site node (RF probe, Zigbee probe, IR/RF capture node, future ones):
+  //   mDNS _sonor-node._tcp (plus the older per-kind type), TXT id (MAC, 12 hex), kind, caps (comma list), spot
+  //   GET /info → { v, kind, board, caps[], id, name, spot, battery (mV, -1 = USB), ssid, wifiRssi, uptime }
+  //   GET /identify → blink 5 s · GET /spot?name=<room or device> → remember where it is (from the Takeoffs room list)
+  // The site agent (Pi in the rack or a laptop) finds nodes locally and the page talks to them through it; no cloud table.
+  const NODE = { service: '_sonor-node._tcp', kinds: { rf: 'Sonor RF probe', zigbee: 'Sonor Zigbee probe', ircap: 'Sonor IR/RF capture node' } };
   // HTTP path + timeout for one probe call; the Pi agent, the Android agent and any page use the same table.
   function probePath(kind, a) {
     a = a || {};
+    // node identity, same on every probe (v1.2): info · identify (blink 5 s) · spot (save where it is)
+    if (a.op === 'info') return { path: 'info', timeout: 1500 };
+    if (a.op === 'identify') return { path: 'identify', timeout: 1500 };
+    if (a.op === 'spot') return { path: 'spot?name=' + encodeURIComponent(String(a.spot || '').slice(0, 60)), timeout: 1500 };
     if (kind === 'rf') return { path: a.mhz ? 'freq?mhz=' + encodeURIComponent(a.mhz) : 'rssi', timeout: 2000 };
     if (kind === 'zb') { const op = a.op || 'listen'; if (op === 'scan') return { path: 'scan', timeout: 9000 }; if (op === 'energy') return { path: 'energy', timeout: 9000 };
       return { path: 'listen?' + (a.ch ? 'ch=' + Number(a.ch) : '') + (a.reset ? '&reset=1' : ''), timeout: 2000 }; }
     throw new Error('unknown probe kind ' + kind);
   }
+  const probeKindOf = (d) => (isProbe(d, 'zb') ? 'zb' : isProbe(d, 'rf') ? 'rf' : null);
   const isProbe = (d, kind) => new RegExp(PROBES[kind].kind.replace('Sonor ', ''), 'i').test((d && d.kind) || '');
 
   // Research rules (wifi-rf-rules.json): load once, then API.rules[id] = { text, sources, strength, rule? }
   async function loadRules(url) { try { const r = await fetch(url || 'data/wifi-rf-rules.json'); const j = await r.json(); const list = Array.isArray(j) ? j : j.rules || []; API.rules = Object.fromEntries(list.map((x) => [x.id, x])); } catch (e) { API.rules = API.rules || {}; } return API.rules; }
 
-  const API = { VERSION: '1.1.0', ZB, ZB_C4, zbFreq, wifiFreq24, rfW, zigbeeLoad, ZB_SYS, ZB_LEVELS, zbVerdict, ZB_OUI, zbMaker,
-    ZB_ENERGY, energyVerdict, LAN, autoMatch, RF_GUIDE, guideFor, RF_LEVELS, rfVerdict, RF_FREQS, rfFreqFor, PROBES, probePath, isProbe, loadRules, rules: {} };
+  const API = { VERSION: '1.2.0', ZB, ZB_C4, zbFreq, wifiFreq24, rfW, zigbeeLoad, ZB_SYS, ZB_LEVELS, zbVerdict, ZB_OUI, zbMaker,
+    ZB_ENERGY, energyVerdict, LAN, autoMatch, RF_GUIDE, guideFor, RF_LEVELS, rfVerdict, RF_FREQS, rfFreqFor, PROBES, NODE, probePath, isProbe, probeKindOf, loadRules, rules: {} };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.SonorWireless = API;
 })(typeof window !== 'undefined' ? window : globalThis);
