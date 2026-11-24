@@ -1,0 +1,303 @@
+{
+ "name": "DEMO · 1394 Tŷ Demo",
+ "subnet": "192.168.1",
+ "vlans": [
+  {
+   "id": 1,
+   "name": "Default",
+   "tag": ""
+  }
+ ],
+ "devices": [
+  {
+   "device": "Router",
+   "service": "network",
+   "location": "Rack",
+   "vlan": 1,
+   "lastOctet": "1",
+   "mac": "00:1D:AA:10:20:30",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "Core switch",
+   "service": "network",
+   "location": "Rack",
+   "vlan": 1,
+   "lastOctet": "2",
+   "mac": "44:D9:E7:01:02:03",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "AP Hall",
+   "service": "network",
+   "location": "Hall ceiling",
+   "vlan": 1,
+   "lastOctet": "3",
+   "mac": "44:D9:E7:01:02:04",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "AP Kitchen",
+   "service": "network",
+   "location": "Kitchen ceiling",
+   "vlan": 1,
+   "lastOctet": "4",
+   "mac": "",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "C4 EA-3 controller",
+   "service": "control",
+   "location": "Rack",
+   "vlan": 1,
+   "lastOctet": "10",
+   "mac": "00:0F:FF:AA:00:01",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "T4 touch screen Kitchen",
+   "service": "control",
+   "location": "Kitchen",
+   "vlan": 1,
+   "lastOctet": "11",
+   "mac": "",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "C4 CA-1",
+   "service": "control",
+   "location": "Plant room",
+   "vlan": 1,
+   "lastOctet": "12",
+   "mac": "00:0F:FF:AA:00:03",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "Global Caché iTach IR",
+   "service": "control",
+   "location": "Rack",
+   "vlan": 1,
+   "lastOctet": "15",
+   "mac": "",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "iTach serial (projector lift)",
+   "service": "control",
+   "location": "Cinema",
+   "vlan": 1,
+   "lastOctet": "16",
+   "mac": "",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "Lutron RA3 processor",
+   "service": "lighting",
+   "location": "Rack",
+   "vlan": 1,
+   "lastOctet": "20",
+   "mac": "00:0F:E7:44:55:66",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "LG OLED Lounge",
+   "service": "video",
+   "location": "Lounge",
+   "vlan": 1,
+   "lastOctet": "30",
+   "mac": "",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "Sony Bravia Snug",
+   "service": "video",
+   "location": "Snug",
+   "vlan": 1,
+   "lastOctet": "31",
+   "mac": "",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "Samsung S95C Master",
+   "service": "video",
+   "location": "Master bedroom",
+   "vlan": 1,
+   "lastOctet": "33",
+   "mac": "64:1C:AE:00:11:22",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "Apple TV Lounge",
+   "service": "video",
+   "location": "Lounge",
+   "vlan": 1,
+   "lastOctet": "32",
+   "mac": "F0:B3:EC:33:44:55",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "Apple TV Cinema",
+   "service": "cinema",
+   "location": "Cinema",
+   "vlan": 1,
+   "lastOctet": "34",
+   "mac": "F0:B3:EC:33:44:56",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "Sky Q Lounge",
+   "service": "video",
+   "location": "Lounge",
+   "vlan": 1,
+   "lastOctet": "35",
+   "mac": "",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "Denon AVC-X6800H",
+   "service": "cinema",
+   "location": "Cinema",
+   "vlan": 1,
+   "lastOctet": "40",
+   "mac": "00:05:CD:AB:CD:EF",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "JVC projector",
+   "service": "cinema",
+   "location": "Cinema",
+   "vlan": 1,
+   "lastOctet": "42",
+   "mac": "",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "Sonos Arc Lounge",
+   "service": "audio",
+   "location": "Lounge",
+   "vlan": 1,
+   "lastOctet": "50",
+   "mac": "",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "Sonos Amp Kitchen",
+   "service": "audio",
+   "location": "Kitchen",
+   "vlan": 1,
+   "lastOctet": "51",
+   "mac": "B8:E9:37:10:20:31",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "Sonos Era 100 Master",
+   "service": "audio",
+   "location": "Master bedroom",
+   "vlan": 1,
+   "lastOctet": "52",
+   "mac": "",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "Sonos Port Garden",
+   "service": "audio",
+   "location": "Plant room",
+   "vlan": 1,
+   "lastOctet": "53",
+   "mac": "",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "Sonos Amp Gym",
+   "service": "audio",
+   "location": "Gym",
+   "vlan": 1,
+   "lastOctet": "54",
+   "mac": "",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "Hikvision NVR",
+   "service": "cctv",
+   "location": "Rack",
+   "vlan": 1,
+   "lastOctet": "60",
+   "mac": "BC:BA:C2:01:02:03",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "Camera Front Drive",
+   "service": "cctv",
+   "location": "Front elevation",
+   "vlan": 1,
+   "lastOctet": "61",
+   "mac": "BC:BA:C2:01:02:04",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "Camera Rear Garden",
+   "service": "cctv",
+   "location": "Rear elevation",
+   "vlan": 1,
+   "lastOctet": "63",
+   "mac": "",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "Camera Side Gate",
+   "service": "cctv",
+   "location": "Side gate",
+   "vlan": 1,
+   "lastOctet": "66",
+   "mac": "",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "DoorBird D2101",
+   "service": "cctv",
+   "location": "Front door",
+   "vlan": 1,
+   "lastOctet": "62",
+   "mac": "",
+   "serial": "",
+   "notes": ""
+  },
+  {
+   "device": "Heating controller",
+   "service": "hvac",
+   "location": "Plant room",
+   "vlan": 1,
+   "lastOctet": "70",
+   "mac": "",
+   "serial": "",
+   "notes": ""
+  }
+ ]
+}

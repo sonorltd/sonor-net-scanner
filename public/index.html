@@ -1,0 +1,841 @@
+<!doctype html>
+<html lang="en" data-theme="graphite">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#1C1C1E">
+<title>Network Scanner · Sonor</title>
+<link rel="icon" type="image/svg+xml" href="./data/favicon.svg">
+<script src="data/sonor-theme.js"></script>  <!-- sonor-platform §2: theme FIRST (graphite default) -->
+<link rel="stylesheet" href="./data/brand.css">
+<script type="module" src="https://apps.sonor.co.uk/sonor-kit/v1/kit.js"></script>  <!-- §1 served kit; the page still works offline on site -->
+<link rel="stylesheet" href="./data/sonor-header.css">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400..700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="./data/sonor-brand.js"></script>
+<script src="./data/sonor-header.js"></script>
+<style>
+:root, [data-theme] {
+  --bg: var(--bg-0, #1C1C1E); --panel: var(--bg-1, #242426); --panel2: var(--bg-2, #2C2C2E); --line: var(--border-strong, rgba(255,255,255,.18));
+  --text: var(--text-primary, #F5F5F7); --muted: var(--text-muted, #98989D); --accent-c: #8058a1; /* Network Map accent (cinema purple) */
+  --tabbar: #141416; --card: #242426; --card2: #2C2C2E; --edge: #3A3A3C; --label: #8E8E93; --dim: #636366;
+  --ok: var(--status-ok, #2fbf71); --warn: var(--status-amber, #e3a72f); --bad: var(--status-bad, #e5484d);
+  /* Sonor service colours (brand-core, locked, never change with theme) */
+  --s-cinema: #8058a1; --s-audio: #4bb9d3; --s-video: #78ba57; --s-lighting: #f5d05c; --s-auto: #e37c59; --s-hvac: #ec6061;
+  --s-control: #e67eb1; --s-cctv: #ad9978; --s-network: #b7b1a7; --s-design: #6e6c69; --s-client: #5b5b60; --s-ungrouped: #3a3a3a;
+  --mono: "DM Mono", ui-monospace, Menlo, monospace;
+  color-scheme: dark;
+}
+[data-theme='slate'] { color-scheme: light; --tabbar: #DDE1E7; --card: #DDE1E7; --card2: #C8CFD7; --edge: #BEC4CD; --label: #5c6470; --dim: #7b8490; }
+* { box-sizing: border-box; } [hidden] { display: none !important; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 var(--font-ui, "DM Sans", system-ui, sans-serif); }
+button, select, input, textarea { font: inherit; color: var(--text); background: var(--card2); border: 1px solid var(--edge); border-radius: 4px; padding: 7px 11px; }
+input:focus, select:focus, textarea:focus { outline: none; border-color: #4bb9d3; }
+button { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; padding: 7px 12px; }
+.lbl { font-family: var(--mono); font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--label); }
+.btn-sm { font-size: 10px; padding: 3px 9px; border-radius: 12px; background: transparent; }
+button { cursor: pointer; } button:disabled { opacity: .5; cursor: default; }
+button.primary { background: var(--cta-bg, var(--accent-c)); border-color: var(--cta-bg, var(--accent-c)); color: var(--cta-text, #fff); }
+button.ghost { background: transparent; }
+input, textarea { min-width: 0; }
+.bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 16px; border-bottom: 1px solid var(--edge); background: var(--bg); }
+.bar .grow { flex: 1; min-width: 160px; }
+.tabs { display: flex; gap: 2px; padding: 0 12px; border-bottom: 1px solid var(--edge); background: var(--tabbar); overflow-x: auto; scrollbar-width: none; }
+.tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none; padding: 13px 14px 11px; color: var(--dim); font-size: 12px; letter-spacing: .14em; font-weight: 500; white-space: nowrap; }
+.tabs button:hover { color: var(--muted); }
+.tabs button.on { color: var(--text); border-bottom-color: var(--accent-c); }
+.tabs .count { display: inline-block; min-width: 16px; padding: 0 4px; margin-left: 5px; border-radius: 8px; background: var(--bad); color: #fff; font-size: 10px; letter-spacing: 0; line-height: 16px; }
+.tabs .count.zero { background: var(--card2); color: var(--dim); }
+main { padding: 14px 16px 40px; max-width: 1500px; margin: 0 auto; }
+.muted { color: var(--muted); } .small { font-size: 12px; } .mono { font-family: var(--mono); font-size: 12.5px; }
+.progress { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; flex-basis: 100%; }
+.progress div { height: 100%; background: var(--accent-c); width: 0; transition: width .3s; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; margin-bottom: 12px; }
+.tile { background: var(--card); border: 1px solid var(--edge); border-radius: 6px; padding: 9px 12px; cursor: pointer; border-left: 4px solid var(--c, var(--line)); }
+.tile.on { outline: 2px solid var(--accent-c); }
+.tile b { display: block; font-size: 20px; font-weight: 600; } .tile span { color: var(--label); font-family: var(--mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-family: var(--mono); font-weight: 500; font-size: 10px; text-transform: uppercase; letter-spacing: .14em; color: var(--muted); padding: 6px 8px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--bg); cursor: pointer; white-space: nowrap; }
+td { padding: 7px 8px; border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent); vertical-align: top; }
+tr.dev { cursor: pointer; } tr.dev:hover td { background: var(--panel); }
+tr.grp td { background: var(--card); font-family: var(--mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; font-weight: 500; padding: 7px 8px; border-left: 4px solid var(--c); }
+/* service colour highlight (toggle) */
+body.svc-tint tr.dev td { background: color-mix(in srgb, var(--c) 13%, transparent); }
+body.svc-tint tr.dev td:first-child { box-shadow: inset 4px 0 0 var(--c); }
+body.svc-tint tr.dev:hover td { background: color-mix(in srgb, var(--c) 24%, transparent); }
+.addr { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--edge); color: var(--muted); white-space: nowrap; }
+.addr.static { color: #f5d05c; border-color: #f5d05c66; } .addr.dhcp { color: #4bb9d3; border-color: #4bb9d366; } .addr.selfassigned, .addr.conflict { color: var(--bad); border-color: var(--bad); }
+.plan-ok, .plan-warn, .plan-bad, .plan-info { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; font-size: 12px; font-weight: 700; cursor: help; position: relative; }
+.plan-ok { background: color-mix(in srgb, var(--ok) 25%, transparent); color: var(--ok); } .plan-warn { background: color-mix(in srgb, var(--warn) 25%, transparent); color: var(--warn); }
+.plan-bad { background: color-mix(in srgb, var(--bad) 25%, transparent); color: var(--bad); } .plan-info { background: var(--card2); color: var(--muted); }
+.tip { position: fixed; z-index: 2000; max-width: 360px; background: #2C2C2E; color: #F5F5F7; border: 1px solid #48484A; border-radius: 6px; padding: 10px 12px; font-size: 12.5px; line-height: 1.45; box-shadow: 0 8px 30px rgba(0,0,0,.45); pointer-events: none; }
+.tip b { display: block; font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; margin-bottom: 4px; }
+.tip ul { margin: 4px 0 0; padding-left: 16px; } .tip li { margin-bottom: 3px; }
+.advice { border-left: 3px solid var(--c, var(--warn)); background: var(--card2); padding: 8px 10px; border-radius: 0 4px 4px 0; font-size: 13px; margin-bottom: 6px; }
+.disc { margin-bottom: 14px; } .disc h3 { margin: 0; font-size: 13px; } .disc .head { display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--edge); }
+.disc .head .n { margin-left: auto; font-family: var(--mono); color: var(--label); font-size: 11px; }
+.disc .what { color: var(--label); font-size: 12px; padding: 6px 12px 0; }
+.disc table td, .disc table th { padding-left: 12px; }
+.toolgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 12px; }
+.out { font-family: var(--mono); font-size: 12px; background: var(--tabbar); border: 1px solid var(--edge); border-radius: 4px; padding: 8px 10px; margin-top: 8px; max-height: 260px; overflow: auto; white-space: pre-wrap; }
+canvas.graph { width: 100%; height: 110px; display: block; margin-top: 8px; background: var(--tabbar); border: 1px solid var(--edge); border-radius: 4px; }
+.stats { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px; font-family: var(--mono); font-size: 11px; color: var(--muted); } .stats b { color: var(--text); font-weight: 500; }
+.banner { background: color-mix(in srgb, var(--accent-c) 22%, var(--card)); border: 1px solid var(--accent-c); border-radius: 6px; padding: 9px 12px; margin-bottom: 12px; font-size: 13px; }
+.sw { display: inline-block; width: 9px; height: 9px; border-radius: 3px; background: var(--c); margin-right: 6px; vertical-align: 0; }
+.chip { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 6px; background: var(--panel2); border: 1px solid var(--line); color: var(--muted); margin: 0 3px 3px 0; white-space: nowrap; }
+.chip.hot { color: var(--text); }
+.pill { font-size: 11px; padding: 2px 7px; border-radius: 10px; white-space: nowrap; border: 1px solid; }
+.pill.ok { color: var(--ok); border-color: var(--ok); } .pill.warn { color: var(--warn); border-color: var(--warn); } .pill.bad { color: var(--bad); border-color: var(--bad); } .pill.info { color: var(--muted); border-color: var(--line); }
+.conf-low { opacity: .7; font-style: italic; }
+.new { color: var(--ok); font-size: 11px; margin-left: 4px; }
+.empty { text-align: center; padding: 50px 10px; color: var(--muted); }
+.drawer { position: fixed; top: 0; right: 0; bottom: 0; width: min(540px, 100vw); background: var(--card); border-left: 1px solid var(--edge); overflow: auto; padding: 16px; transform: translateX(105%); transition: transform .2s; z-index: 50; box-shadow: -10px 0 30px rgba(0,0,0,.3); z-index: 1000; }
+.drawer.open { transform: none; }
+.drawer h3 { margin: 0 0 2px; font-size: 18px; }
+.drawer h4 { margin: 18px 0 6px; font-family: var(--mono); font-weight: 500; font-size: 10px; text-transform: uppercase; letter-spacing: .16em; color: var(--label); }
+.kv { display: grid; grid-template-columns: 110px 1fr; gap: 3px 10px; } .kv div:nth-child(odd) { color: var(--muted); }
+.ev li { margin-bottom: 3px; }
+.toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--line); padding: 10px 14px; border-radius: 10px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; z-index: 60; }
+.toast.show { opacity: 1; } .toast.err { border-color: var(--bad); }
+.panel { background: var(--card); border: 1px solid var(--edge); border-radius: 6px; padding: 14px 16px; margin-bottom: 12px; }
+.panel > .lbl:first-child { display: block; margin-bottom: 10px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+a { color: var(--accent-c); }
+/* IP schedule = paper (§11) */
+.paper { background: #fff; color: #1d1d1f; border-radius: 4px; padding: 28px 32px; max-width: 1100px; margin: 0 auto; box-shadow: 0 4px 30px rgba(0,0,0,.35); }
+.paper h1 { font-size: 20px; margin: 0; } .paper .sub { color: #555; font-size: 12px; margin-bottom: 16px; }
+.paper table th { position: static; background: #f2f2f2; color: #333; border-bottom: 1px solid #ccc; cursor: default; }
+.paper table td { border-bottom: 1px solid #e3e3e3; color: #1d1d1f; font-size: 12px; }
+.paper tr.grp td { background: #fafafa; color: #1d1d1f; }
+.paper .chip { background: #f2f2f2; border-color: #ddd; color: #444; }
+@media print {
+  body { background: #fff; } #sonor-header, .bar, .tabs, .noprint, .drawer, .toast { display: none !important; }
+  main { padding: 0; max-width: none; } .paper { box-shadow: none; padding: 0; max-width: none; }
+  tr { break-inside: avoid; } @page { size: A4 landscape; margin: 12mm; }
+}
+@media (max-width: 760px) { .toolgrid { grid-template-columns: 1fr; } .tabs button { padding: 12px 10px 10px; font-size: 11px; } .hide-sm { display: none; } .tiles { grid-template-columns: repeat(3, 1fr); gap: 6px; } .tile { padding: 6px 8px; } .tile b { font-size: 16px; } .tile span { font-size: 11px; } main { padding: 10px 10px 40px; } }
+</style>
+</head>
+<body>
+<div id="sonor-header"></div>
+
+<div class="bar">
+  <span class="lbl">Scan</span>
+  <span id="agentPill" class="pill info">Agent: …</span>
+  <input id="targets" class="grow mono" placeholder="Subnets to scan (blank = the agent's own), e.g. 192.168.1.0/24, 10.0.20.0/24">
+  <input id="label" placeholder="Scan label, e.g. 1394 first fix" style="width:200px" class="hide-sm">
+  <button id="scanBtn" class="primary">Scan network</button>
+  <select id="scanPick" title="Earlier scans on this agent"></select>
+  <div class="progress" id="prog" hidden><div></div></div>
+  <span id="scanState" class="muted small" style="flex-basis:100%"></span>
+</div>
+<div class="tabs">
+  <button data-tab="devices" class="on">Devices</button>
+  <button data-tab="discovery">Discovery</button>
+  <button data-tab="issues">Issues<span class="count zero" id="issueCount">0</span></button>
+  <button data-tab="check">Check against project</button>
+  <button data-tab="tools">Tools</button>
+  <button data-tab="schedule">IP schedule</button>
+</div>
+
+<main>
+  <section id="tab-devices">
+    <div class="tiles" id="tiles"></div>
+    <div class="filters">
+      <input id="q" placeholder="Search name, IP, MAC, maker, model, firmware…" style="flex:1;min-width:200px">
+      <select id="groupBy"><option value="service">Group by service</option><option value="subnet">Group by subnet</option><option value="make">Group by maker</option><option value="none">No grouping</option></select>
+      <label class="small"><input type="checkbox" id="hideClients"> Hide personal devices</label>
+      <label class="small"><input type="checkbox" id="onlyNew"> New since last scan</label>
+      <label class="small"><input type="checkbox" id="svcTint"> Service colours</label>
+      <input id="dhcpPool" class="mono" style="width:230px" placeholder="DHCP pool e.g. 192.168.1.100-199" title="The router's DHCP range. Devices outside it are marked fixed (static).">
+    </div>
+    <div class="row small muted" id="planLegend" hidden style="margin:-2px 0 8px">Plan column: <span class="plan-ok">✓</span> as planned · <span class="plan-warn">!</span> differs from the plan · <span class="plan-info">+</span> not in the plan. Hover or tap a row for what to do.</div>
+    <div style="overflow-x:auto"><table id="devTable"></table></div>
+    <div class="empty" id="noScan" hidden>No scan yet. Press <b>Scan network</b>. A /24 takes about 30 seconds.</div>
+  </section>
+
+  <section id="tab-discovery" hidden>
+    <p class="muted small" style="margin-top:0">What each discovery protocol heard on this network. Multicast discovery only reaches the VLAN the scanner is on; it also finds kit sitting on the wrong subnet.</p>
+    <div id="discList"></div>
+  </section>
+
+  <section id="tab-issues" hidden>
+    <div id="issueList"></div>
+  </section>
+
+  <section id="tab-tools" hidden>
+    <div class="toolgrid">
+      <div class="panel"><span class="lbl">Ping</span>
+        <div class="row"><input id="pingHost" class="mono" placeholder="192.168.1.10" style="flex:1"><button id="pingGo" class="primary">Start</button></div>
+        <canvas class="graph" id="pingGraph" width="760" height="220"></canvas>
+        <div class="stats" id="pingStats"></div>
+      </div>
+      <div class="panel"><span class="lbl">Port check</span>
+        <div class="row"><input id="portHost" class="mono" placeholder="192.168.1.10" style="flex:1"><input id="portList" class="mono" placeholder="common, or 80,443,5020 or 1-1024" style="flex:1"><button id="portGo" class="primary">Check</button></div>
+        <div class="out" id="portOut" hidden></div>
+      </div>
+      <div class="panel"><span class="lbl">Traceroute</span>
+        <div class="row"><input id="traceHost" class="mono" placeholder="8.8.8.8 or a device on another VLAN" style="flex:1"><button id="traceGo" class="primary">Trace</button></div>
+        <div class="out" id="traceOut" hidden></div>
+      </div>
+      <div class="panel"><span class="lbl">DNS lookup</span>
+        <div class="row"><input id="dnsName" class="mono" placeholder="apps.sonor.co.uk or an IP" style="flex:1"><button id="dnsGo" class="primary">Look up</button></div>
+        <div class="out" id="dnsOut" hidden></div>
+      </div>
+      <div class="panel"><span class="lbl">Wake-on-LAN</span>
+        <div class="row"><input id="wolMac" class="mono" placeholder="00:11:22:33:44:55" style="flex:1" list="macList"><datalist id="macList"></datalist><button id="wolGo" class="primary">Wake</button></div>
+        <p class="muted small">Sends the magic packet to this network's broadcast. Works for TVs, AVRs and PCs with Wake-on-LAN switched on.</p>
+        <div class="out" id="wolOut" hidden></div>
+      </div>
+      <div class="panel"><span class="lbl">Subnet calculator</span>
+        <div class="row"><input id="calcIn" class="mono" placeholder="192.168.20.0/22 or 10.0.5.7 255.255.255.0" style="flex:1"></div>
+        <div class="out" id="calcOut"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-check" hidden>
+    <div class="panel">
+      <div class="row">
+        <select id="projPick" style="min-width:280px"><option value="">Pick a project with a network plan…</option></select>
+        <button id="projLoad">Load plan</button>
+        <span id="projState" class="muted small"></span>
+      </div>
+      <p class="muted small" id="checkHint">Compares the latest scan with the project's plan in the Network Map app: matched by MAC first, then by IP. Personal devices (phones, laptops) are left out of "not in plan".</p>
+    </div>
+    <div class="tiles" id="checkTiles"></div>
+    <div class="row noprint" style="margin-bottom:8px" id="checkActions" hidden>
+      <button id="fillMacs">Fill missing MACs and serials into Network Map</button>
+      <span class="muted small" id="fillState"></span>
+    </div>
+    <div style="overflow-x:auto"><table id="checkTable"></table></div>
+  </section>
+
+  <section id="tab-schedule" hidden>
+    <div class="row noprint" style="margin-bottom:10px">
+      <label class="small"><input type="checkbox" id="schClients"> Include personal devices</label>
+      <label class="small"><input type="checkbox" id="schPorts" checked> Show open ports</label>
+      <button id="printBtn" class="primary">Print / save as PDF</button>
+      <span class="muted small">Names you give devices here are kept on the agent and print on the schedule.</span>
+    </div>
+    <div class="paper" id="paper"></div>
+  </section>
+</main>
+
+<aside class="drawer" id="drawer"></aside>
+<div class="toast" id="toast"></div>
+
+<script>
+const APP_VERSION = '1.1.0';
+const HOSTED_URL = 'https://apps.sonor.co.uk/sonor-net-scanner/';
+if (window.SonorHeader) {
+  SonorHeader.init({ appName: 'Network Scanner', repo: 'sonor-net-scanner' });
+  const v = document.getElementById('nav-version'); if (v) v.textContent = 'v' + APP_VERSION;
+}
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ipNum = (ip) => String(ip).split('.').reduce((a, o) => a * 256 + Number(o), 0);
+const SERVICES = [
+  ['cinema', '01 Cinema'], ['audio', '02 Audio'], ['video', '03 Video'], ['lighting', '04 Lighting'], ['auto', '05 Automation'], ['hvac', '06 HVAC'],
+  ['control', '07 Control'], ['cctv', '08 Security'], ['network', '09 Network'], ['design', '10 Infrastructure'], ['client', 'Personal devices'], ['ungrouped', 'Unidentified'],
+];
+const SVC = Object.fromEntries(SERVICES);
+const svcColor = (s) => `var(--s-${SVC[s] ? s : 'ungrouped'})`;
+function toast(msg, err) { const t = $('#toast'); t.textContent = msg; t.className = 'toast show' + (err ? ' err' : ''); clearTimeout(t._h); t._h = setTimeout(() => t.className = 'toast', 3000); }
+const store = { get: (k, d) => { try { const v = localStorage.getItem('netscan.' + k); return v === null ? d : JSON.parse(v); } catch { return d; } }, set: (k, v) => { try { localStorage.setItem('netscan.' + k, JSON.stringify(v)); } catch {} } };
+
+// ── Transport ─────────────────────────────────────────────
+// LOCAL: page served by the agent → /api/* on the same origin.
+// BRIDGE: page hosted on apps.sonor.co.uk (https) can't fetch a LAN http address, so it opens the agent's own page
+//         in a small window and talks to it with postMessage; that window does the fetches on the LAN.
+const qs = new URLSearchParams(location.search);
+const IS_BRIDGE_WINDOW = qs.has('bridge');
+const TRUSTED = (o) => /^https:\/\/([\w-]+\.)*sonor\.co\.uk$/.test(o) || /^https:\/\/sonorltd\.github\.io$/.test(o) || /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(o);
+let mode = 'local';
+// APP: inside the Android app the scan engine runs on the tablet (agent.js → window.SonorAgent).
+// DEMO: ?demo=1 (the Master Hub card) — a sample house, nothing touches a network.
+const IS_APP = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
+const IS_DEMO = qs.has('demo');
+if (IS_APP) mode = 'app'; else if (IS_DEMO) mode = 'demo';
+let bridgeWin = null; let bridgeReady = null; const pending = new Map(); let seq = 0;
+
+async function localApi(action, data) {
+  const r = await fetch('/api/' + action, data === undefined ? {} : { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j.error || r.statusText);
+  return j;
+}
+async function api(action, data) {
+  if (mode === 'app') { if (!window.SonorAgent) await loadScript('agent.js'); return window.SonorAgent.api(action, data); }
+  if (mode === 'demo') return demoApi(action, data);
+  if (mode === 'local') return localApi(action, data);
+  if (!bridgeWin || bridgeWin.closed) throw new Error('Not connected to an agent');
+  await bridgeReady;
+  const id = ++seq;
+  return new Promise((res, rej) => {
+    pending.set(id, { res, rej });
+    bridgeWin.postMessage({ netscan: 'call', id, action, data }, '*');
+    setTimeout(() => { if (pending.has(id)) { pending.delete(id); rej(new Error('The agent did not answer')); } }, 20000);
+  });
+}
+window.addEventListener('message', (e) => {
+  const m = e.data || {};
+  if (m.netscan === 'reply' && pending.has(m.id) && e.source === bridgeWin) { const p = pending.get(m.id); pending.delete(m.id); m.ok ? p.res(m.result) : p.rej(new Error(m.error)); }
+  if (m.netscan === 'ready' && e.source === bridgeWin && bridgeReady && bridgeReady._res) bridgeReady._res();
+  if (m.netscan === 'call' && IS_BRIDGE_WINDOW) {
+    if (!TRUSTED(e.origin)) return;
+    localApi(m.action, m.data).then((result) => e.source.postMessage({ netscan: 'reply', id: m.id, ok: true, result }, e.origin))
+      .catch((err) => e.source.postMessage({ netscan: 'reply', id: m.id, ok: false, error: err.message }, e.origin));
+  }
+});
+function loadScript(src) { return new Promise((res, rej) => { const el = document.createElement('script'); el.src = src; el.onload = res; el.onerror = () => rej(new Error('Could not load ' + src)); document.head.appendChild(el); }); }
+// ── Demo agent (a sample house from data/demo-scan.json; tools answer with made-up but plausible results) ──
+let demo = null;
+async function demoApi(action, data = {}) {
+  if (!demo) { const r = await fetch('data/demo-scan.json'); const s = await r.json(); demo = { scan: s, notes: {}, running: false, prog: null }; }
+  const S = demo.scan; const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+  switch (action) {
+    case 'state': return { version: APP_VERSION, hostname: 'Demo rig', interfaces: [{ ifname: 'wlan0', address: '192.168.1.115', cidr: '192.168.1.0/24' }], scan: { running: demo.running, progress: demo.prog, error: null, lastId: S.id } };
+    case 'scans': return { scans: [{ id: S.id, startedAt: S.startedAt, seconds: S.seconds, targets: S.targets, count: S.devices.length, label: S.label }] };
+    case 'results': return { ...S, notes: demo.notes };
+    case 'note': { const k = String(data.key).toUpperCase(); demo.notes[k] = { name: data.name || '', note: data.note || '' }; return { notes: demo.notes }; }
+    case 'scan': demo.running = true; (async () => { for (const [ph, t] of [['sweep', 254], ['listening', 1], ['probing', S.devices.length]]) for (let i = 0; i <= t; i += Math.ceil(t / 12)) { demo.prog = { phase: ph, done: i, total: t, found: Math.min(i, S.devices.length) }; await sleep(140); } demo.running = false; demo.prog = null; })(); return { started: true };
+    case 'probe': await sleep(900); return { device: S.devices.find((d) => d.ip === data.ip) };
+    case 'ping': { await sleep(250); const d = S.devices.find((x) => x.ip === data.host); const lost = !d || Math.random() < 0.03; return lost ? { ok: false, ms: null } : { ok: true, ms: Math.round((1 + Math.random() * 4 + (d.service === 'client' ? Math.random() * 30 : 0)) * 10) / 10, via: 'icmp' }; }
+    case 'ports': { await sleep(1200); const d = S.devices.find((x) => x.ip === data.host); return { host: data.host, checked: 55, seconds: 1.2, refused: d ? 55 - d.ports.length : 0, open: d ? d.ports.map((p) => ({ ...p, banner: '' })) : [] }; }
+    case 'trace': await sleep(1500); return { host: data.host, hops: S.devices.some((x) => x.ip === data.host) ? [{ hop: 1, ip: data.host, ms: 2.1 }] : [{ hop: 1, ip: '192.168.1.1', ms: 1.2 }, { hop: 2, ip: '100.64.0.1', ms: 6.8 }, { hop: 3, ip: '62.172.102.5', ms: 9.4 }, { hop: 4, ip: data.host, ms: 11.2 }] };
+    case 'lookup': await sleep(300); return { name: data.name, addresses: /^\d+\.\d+\.\d+\.\d+$/.test(data.name) ? [data.name] : ['104.21.32.1', '172.67.150.2'], names: [] };
+    case 'wol': await sleep(200); return { mac: data.mac, sentTo: ['255.255.255.255:9', '192.168.1.255:9'] };
+  }
+  throw new Error('Not in the demo');
+}
+function connectAgent(addr) {
+  addr = addr.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+  if (!/:\d+$/.test(addr)) addr += ':8050';
+  store.set('agent', addr);
+  let res; bridgeReady = new Promise((r) => { res = r; }); bridgeReady._res = res;
+  bridgeWin = window.open(`http://${addr}/?bridge=1`, 'sonor-netscan-agent', 'width=420,height=260');
+  if (!bridgeWin) { toast('Allow pop-ups for this page so it can reach the agent', true); return; }
+  mode = 'bridge';
+  const ping = setInterval(() => { if (bridgeWin.closed) { clearInterval(ping); return; } bridgeWin.postMessage({ netscan: 'hello' }, '*'); }, 500);
+  bridgeReady.then(() => { clearInterval(ping); refresh(); });
+}
+if (IS_BRIDGE_WINDOW) {
+  document.body.innerHTML = '<div style="padding:20px;font:14px DM Sans,sans-serif;color:#ddd;background:#1c1c1e;height:100vh">Sonor Network Scanner agent link is open.<br><br>Keep this small window open while you use the scanner page. Close it to disconnect.</div>';
+  window.addEventListener('message', (e) => { if ((e.data || {}).netscan === 'hello' && TRUSTED(e.origin)) e.source.postMessage({ netscan: 'ready' }, e.origin); });
+}
+
+// ── Supabase (project plans). On apps.sonor.co.uk the gateway signs these calls in as the person. ──
+const SB_URL = 'https://ysmvklstkzodlocttspy.supabase.co';
+const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlzbXZrbHN0a3pvZGxvY3R0c3B5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3Njc0OTMsImV4cCI6MjA4OTM0MzQ5M30.08kRS_dtbwz0rSYezNGMJHnOU_st8GKZseQPefcMEMc';
+async function rest(path, opts = {}) {
+  const r = await fetch(SB_URL + '/rest/v1' + path, { ...opts, headers: { apikey: SB_ANON, Authorization: 'Bearer ' + SB_ANON, 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+  const t = await r.text(); const j = t ? JSON.parse(t) : null;
+  if (!r.ok) throw new Error((j && (j.message || j.error)) || r.statusText);
+  return j;
+}
+
+// ── State ─────────────────────────────────────────────────
+let agent = null; let scanData = null; let prevScan = null; let notes = {};
+let filterSvc = store.get('svc', ''); let sel = null; let sortKey = 'ip'; let sortDir = 1;
+let plan = null; // { projectId, name, config, rowId, revision, devices:[...] }
+
+const noteKey = (d) => (d.mac || d.ip).toUpperCase();
+const nameOf = (d) => (notes[noteKey(d)] && notes[noteKey(d)].name) || d.name || '';
+const isClient = (d) => d.service === 'client';
+const subnetOf = (ip) => ip.split('.').slice(0, 3).join('.') + '.0/24';
+const modelLine = (d) => (d.model && d.make && d.model.toLowerCase().startsWith(d.make.toLowerCase()) ? d.model : [d.make, d.model].filter(Boolean).join(' ')) || '';
+
+async function refresh() {
+  try {
+    agent = await api('state');
+    $('#agentPill').className = 'pill ok';
+    $('#agentPill').textContent = `${mode === 'app' ? 'This tablet' : mode === 'demo' ? 'Demo' : 'Agent'}: ${agent.hostname} · ${agent.interfaces.map((i) => i.cidr).join(', ') || 'no network'}`;
+    $('#targets').placeholder = `Subnets to scan (blank = ${agent.interfaces.map((i) => i.cidr).join(', ') || 'none'})`;
+    if (window.SonorHeader) SonorHeader.updateDbStatus('live', { local: 'Agent', bridge: 'Agent link', app: 'Tablet', demo: 'Demo data' }[mode]);
+    renderScanState();
+    const { scans } = await api('scans');
+    $('#scanPick').innerHTML = scans.length ? scans.map((s) => `<option value="${esc(s.id)}">${esc(new Date(s.startedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))} · ${s.count} devices${s.label ? ' · ' + esc(s.label) : ''}</option>`).join('') : '<option value="">No scans yet</option>';
+    if (scans.length && (!scanData || agent.scan.lastId !== scanData.id)) await loadScan(scans[0].id, scans[1] && scans[1].id);
+    else if (!scans.length) render();
+  } catch (e) {
+    $('#agentPill').className = 'pill bad';
+    $('#agentPill').textContent = mode === 'local' ? 'Agent offline' : 'Not connected';
+    if (window.SonorHeader) SonorHeader.updateDbStatus('error', 'No agent');
+    if (mode === 'local' && location.protocol === 'https:') showConnect();
+    else toast('Cannot reach the scanner agent: ' + e.message, true);
+  }
+}
+function showConnect() {
+  mode = 'bridge';
+  const last = store.get('agent', qs.get('agent') || '');
+  $('#tab-devices').insertAdjacentHTML('afterbegin', `<div class="panel" id="connectPanel"><b>Connect to the site agent</b>
+    <p class="muted small">Scanning needs the Sonor scanner agent running on a Pi or laptop on the site network (<span class="mono">node server.js</span>). Enter its address. Your device must be on the same network.</p>
+    <div class="row"><input id="agentAddr" class="mono" placeholder="192.168.1.50:8050" value="${esc(last)}"><button class="primary" id="agentGo">Connect</button></div></div>`);
+  $('#agentGo').onclick = () => { connectAgent($('#agentAddr').value); };
+}
+async function loadScan(id, prevId) {
+  scanData = await api('results', { id });
+  notes = scanData.notes || {};
+  prevScan = null;
+  if (prevId) { try { prevScan = await api('results', { id: prevId }); } catch {} }
+  $('#scanPick').value = id;
+  render();
+}
+function renderScanState() {
+  const s = agent && agent.scan;
+  $('#scanBtn').disabled = !!(s && s.running);
+  $('#prog').hidden = !(s && s.running);
+  if (s && s.running) {
+    const p = s.progress || {};
+    $('#prog div').style.width = (100 * (p.done || 0) / (p.total || 1)) + '%';
+    $('#scanState').textContent = { starting: 'Starting…', sweep: `Sweeping ${p.total} addresses… ${p.found || 0} answering so far`, listening: 'Listening for Bonjour, UPnP, Control4 SDDP, Hikvision SADP, Dahua, UniFi, ONVIF and beacons…', probing: `Reading ports, models and firmware: ${p.done} of ${p.total} devices` }[p.phase] || 'Scanning…';
+  } else if (s && s.error) $('#scanState').textContent = 'Scan failed: ' + s.error;
+  else if (scanData) $('#scanState').textContent = `Scan of ${scanData.targets.join(', ')} · ${scanData.devices.length} devices · ${scanData.seconds}s · ${new Date(scanData.startedAt).toLocaleString('en-GB')}`;
+  else $('#scanState').textContent = '';
+}
+async function poll() {
+  try { agent = await api('state'); } catch (e) { return toast(e.message, true); }
+  renderScanState();
+  if (agent.scan.running) return setTimeout(poll, 800);
+  if (agent.scan.error) return toast('Scan failed: ' + agent.scan.error, true);
+  await refresh();
+  toast(`Scan finished: ${scanData ? scanData.devices.length : 0} devices`);
+}
+
+// ── Fixed IP / DHCP ───────────────────────────────────────
+// The device's own word wins (SADP / Dahua), then factory defaults + self-assigned (agent), then the DHCP pool typed here.
+function parsePool(txt) {
+  const m = String(txt || '').trim().match(/^(\d+\.\d+\.\d+)\.(\d+)\s*-\s*(?:(\d+\.\d+\.\d+)\.)?(\d+)$/); if (!m) return null;
+  const a = ipNum(`${m[1]}.${m[2]}`); const b = ipNum(`${m[3] || m[1]}.${m[4]}`); return a <= b ? [a, b] : null;
+}
+function addrOf(d) {
+  const a = d.addressing || { mode: 'unknown', note: '' };
+  if (d.conflict) return { mode: 'conflict', label: 'Conflict', note: d.conflict.note + ': ' + d.conflict.sources.join(', ') };
+  if (a.mode !== 'unknown') return { mode: a.mode, label: { static: 'Fixed', dhcp: 'DHCP', selfassigned: 'No DHCP' }[a.mode] || a.mode, note: a.note, sure: a.source === 'device' };
+  const pool = parsePool(store.get('dhcpPool', ''));
+  if (pool && subnetOf(d.ip) === subnetOf(store.get('dhcpPool', '').split('-')[0].trim())) {
+    const n = ipNum(d.ip); return n >= pool[0] && n <= pool[1] ? { mode: 'dhcp', label: 'DHCP pool', note: 'Inside the DHCP pool you entered: given out by the router (could still be a reservation)' } : { mode: 'static', label: 'Fixed', note: 'Outside the DHCP pool you entered, so it is set to a fixed address (on the device or a reservation outside the pool)' };
+  }
+  return { mode: 'unknown', label: '', note: 'Enter the router\'s DHCP pool above to see fixed vs DHCP for everything' };
+}
+const addrChip = (d) => { const a = addrOf(d); return a.label ? `<span class="addr ${a.mode}" title="${esc(a.note)}">${esc(a.label)}${a.sure ? ' ✓' : ''}</span>` : ''; };
+
+// ── Against the project plan: one verdict + what to do, per found device ──
+let advice = new Map(); // ip → { level: ok|warn|info, title, items[] }
+function buildAdvice() {
+  advice = new Map(); if (!plan || !scanData) return;
+  const { rows, extra } = compare();
+  for (const r of rows) {
+    if (!r.f) continue;
+    const p = r.p; const f = r.f; const items = []; let level = 'ok';
+    const fixed = addrOf(f).mode === 'static';
+    if (r.status[1].startsWith('Wrong IP')) { level = 'warn'; items.push(fixed ? `It is set to a fixed ${f.ip}. Change it on the device to <b>${esc(p._ip)}</b> (plan: ${esc(p.device)}).` : `Plan says <b>${esc(p._ip)}</b> for ${esc(p.device)}. Add a DHCP reservation for ${esc(f.mac)} → ${esc(p._ip)} on the router, then reboot it, or set it fixed on the device.`); }
+    if (r.status[1].startsWith('Different device')) { level = 'warn'; items.push(`The plan expects ${esc(p.device)} (MAC ${esc(p._mac)}) at ${esc(p._ip)}, but this is ${esc(modelLine(f) || f.kind || 'another device')} (${esc(f.mac)}). Move one of them, or update the MAC in Network Map if the device was swapped.`); }
+    if (p.service && f.service && !['ungrouped', 'client'].includes(f.service) && f.confidence !== 'low' && p.service !== f.service && p.service !== 'ungrouped') { if (level === 'ok') level = 'warn'; items.push(`Plan lists it under <b>${esc(SVC[p.service] || p.service)}</b>; the scanner reads it as ${esc(SVC[f.service] || f.service)}. Check the right row in Network Map.`); }
+    if (r.status[0] === 'ok' && !p._mac && f.mac && !f.randomMac) items.push(`MAC ${esc(f.mac)} is missing from the plan: use "Fill missing MACs" on the Check tab.`);
+    if (r.status[0] === 'ok' && addrOf(f).mode === 'dhcp' && addrOf(f).label === 'DHCP') items.push('The device says it is on DHCP: make sure the router has a reservation for it so the address never moves.');
+    if (f.conflict) { level = 'warn'; items.push('Two MACs answered for this address: find the duplicate before signing off.'); }
+    advice.set(f.ip, { level, title: level === 'ok' ? `As planned: ${p.device}` : `Differs from the plan: ${p.device}`, items });
+  }
+  for (const d of extra) {
+    const items = [`Not in the ${esc(plan.name || 'project')} network plan. Add it in Network Map under <b>${esc(SVC[d.service] || 'the right service')}</b>${d.mac ? ` with MAC ${esc(d.mac)}` : ''}.`];
+    if (addrOf(d).mode !== 'static') items.push('Give it a fixed address or a DHCP reservation in the plan\'s range for its service.');
+    advice.set(d.ip, { level: 'info', title: 'Not in the plan', items });
+  }
+}
+const planCell = (d) => { const a = advice.get(d.ip); if (!a) return plan ? '<span class="muted small">—</span>' : ''; return `<span class="plan-${a.level}" data-tip="${esc(d.ip)}">${{ ok: '✓', warn: '!', info: '+' }[a.level]}</span>`; };
+let tipEl = null;
+function showTip(el) {
+  const a = advice.get(el.dataset.tip); if (!a) return;
+  if (!tipEl) { tipEl = document.createElement('div'); tipEl.className = 'tip'; document.body.appendChild(tipEl); }
+  tipEl.innerHTML = `<b style="color:${{ ok: 'var(--ok)', warn: 'var(--warn)', info: 'var(--muted)' }[a.level]}">${esc(a.title)}</b>${a.items.length ? '<ul>' + a.items.map((i) => `<li>${i}</li>`).join('') + '</ul>' : ''}`;
+  const r = el.getBoundingClientRect(); tipEl.hidden = false;
+  const w = Math.min(360, innerWidth - 20); tipEl.style.left = Math.max(10, Math.min(r.left - w + 30, innerWidth - w - 10)) + 'px'; tipEl.style.top = (r.bottom + 8 + tipEl.offsetHeight > innerHeight ? r.top - tipEl.offsetHeight - 8 : r.bottom + 8) + 'px';
+}
+const hideTip = () => { if (tipEl) tipEl.hidden = true; };
+
+// ── Devices tab ───────────────────────────────────────────
+function render() {
+  renderScanState();
+  const has = !!(scanData && scanData.devices.length);
+  $('#noScan').hidden = has; $('#devTable').hidden = !has;
+  if (!has) { $('#tiles').innerHTML = ''; return renderSchedule(); }
+  const prevMacs = new Set(prevScan ? prevScan.devices.map((d) => d.mac || d.ip) : []);
+  scanData.devices.forEach((d) => { d._new = !!prevScan && !prevMacs.has(d.mac || d.ip); });
+  const counts = {}; for (const d of scanData.devices) counts[d.service] = (counts[d.service] || 0) + 1;
+  const gone = prevScan ? prevScan.devices.filter((p) => !scanData.devices.some((d) => (d.mac || d.ip) === (p.mac || p.ip))) : [];
+  $('#tiles').innerHTML = `<div class="tile ${filterSvc ? '' : 'on'}" data-s=""><b>${scanData.devices.length}</b><span>All devices</span></div>` +
+    SERVICES.filter(([k]) => counts[k]).map(([k, l]) => `<div class="tile ${filterSvc === k ? 'on' : ''}" data-s="${k}" style="--c:${svcColor(k)}"><b>${counts[k]}</b><span>${esc(l)}</span></div>`).join('') +
+    (prevScan ? `<div class="tile" data-s="_new" style="--c:var(--ok)"><b>${scanData.devices.filter((d) => d._new).length}</b><span>New since last scan</span></div><div class="tile" data-s="_gone" style="--c:var(--bad)" title="${esc(gone.map((g) => g.ip + ' ' + (g.name || g.kind)).join('\n'))}"><b>${gone.length}</b><span>Gone since last scan</span></div>` : '');
+  document.querySelectorAll('#tiles .tile').forEach((t) => t.onclick = () => {
+    if (t.dataset.s === '_new') { $('#onlyNew').checked = !$('#onlyNew').checked; return renderTable(); }
+    if (t.dataset.s === '_gone') return toast(gone.length ? 'Gone: ' + gone.map((g) => g.ip + ' ' + (g.name || g.kind || g.vendor)).join(' · ') : 'Nothing has gone');
+    filterSvc = t.dataset.s; store.set('svc', filterSvc); render();
+  });
+  buildAdvice(); renderTable(); renderSchedule(); renderDiscovery(); renderIssues(); if (plan) renderCheck();
+  $('#macList').innerHTML = scanData.devices.filter((d) => d.mac).map((d) => `<option value="${esc(d.mac)}">${esc(nameOf(d) || modelLine(d) || d.ip)}</option>`).join('');
+}
+function visible() {
+  const q = $('#q').value.trim().toLowerCase();
+  return scanData.devices.filter((d) => (!filterSvc || d.service === filterSvc) && !($('#hideClients').checked && isClient(d)) && !($('#onlyNew').checked && !d._new) &&
+    (!q || [d.ip, d.mac, d.mac.replace(/:/g, ''), nameOf(d), d.make, d.model, d.kind, d.vendor, d.firmware, d.serial, ...d.hostnames].join(' ').toLowerCase().includes(q)));
+}
+const COLS = [
+  ['ip', 'IP'], ['addr', 'Address'], ['name', 'Name'], ['model', 'Make / model'], ['kind', 'Type'], ['mac', 'MAC · maker'], ['firmware', 'Firmware'], ['ports', 'Open ports'], ['seen', 'Seen by'],
+];
+function sortVal(d, k) {
+  if (k === 'ip') return ipNum(d.ip); if (k === 'name') return nameOf(d).toLowerCase(); if (k === 'model') return modelLine(d).toLowerCase();
+  if (k === 'addr') return addrOf(d).label; if (k === 'plan') return (advice.get(d.ip) || {}).level || 'z';
+  if (k === 'ports') return d.ports.length; if (k === 'seen') return d.seenBy.length; return String(d[k] || '').toLowerCase();
+}
+function renderTable() {
+  if (!scanData) return;
+  const list = visible().sort((a, b) => (sortVal(a, sortKey) > sortVal(b, sortKey) ? 1 : sortVal(a, sortKey) < sortVal(b, sortKey) ? -1 : 0) * sortDir);
+  const g = $('#groupBy').value;
+  const keyOf = (d) => g === 'service' ? d.service : g === 'subnet' ? subnetOf(d.ip) : g === 'make' ? (d.make || d.vendor || 'Unknown maker') : '';
+  const groups = new Map();
+  for (const d of list) { const k = keyOf(d); if (!groups.has(k)) groups.set(k, []); groups.get(k).push(d); }
+  let order = [...groups.keys()];
+  if (g === 'service') order.sort((a, b) => SERVICES.findIndex((s) => s[0] === a) - SERVICES.findIndex((s) => s[0] === b));
+  else order.sort();
+  const cols = plan ? [['plan', 'Plan'], ...COLS] : COLS;
+  $('#planLegend').hidden = !plan;
+  let html = '<thead><tr>' + cols.map(([k, l]) => `<th data-k="${k}" class="${['firmware', 'ports', 'seen'].includes(k) ? 'hide-sm' : ''}">${l}${sortKey === k ? (sortDir > 0 ? ' ▲' : ' ▼') : ''}</th>`).join('') + '</tr></thead><tbody>';
+  for (const k of order) {
+    if (g !== 'none') html += `<tr class="grp" style="--c:${g === 'service' ? svcColor(k) : 'var(--line)'}"><td colspan="${cols.length}">${esc(g === 'service' ? SVC[k] || k : k)} <span class="muted small">· ${groups.get(k).length}</span></td></tr>`;
+    for (const d of groups.get(k)) html += devRow(d);
+  }
+  $('#devTable').innerHTML = html + '</tbody>';
+  $('#devTable').querySelectorAll('th').forEach((th) => th.onclick = () => { if (sortKey === th.dataset.k) sortDir = -sortDir; else { sortKey = th.dataset.k; sortDir = 1; } renderTable(); });
+  $('#devTable').querySelectorAll('tr.dev').forEach((tr) => tr.onclick = () => openDrawer(tr.dataset.ip));
+  $('#devTable').querySelectorAll('[data-tip]').forEach((el) => { el.onmouseenter = () => showTip(el); el.onmouseleave = hideTip; });
+}
+function devRow(d) {
+  const nm = nameOf(d);
+  const ports = d.ports.slice(0, 8).map((p) => `<span class="chip ${['C4 Director', 'Sonos', 'Global Caché', 'Crestron CIP', 'Samsung MDC', 'LG webOS'].includes(p.label) ? 'hot' : ''}" title="${esc(p.label)}">${p.port}</span>`).join('') + (d.ports.length > 8 ? `<span class="chip">+${d.ports.length - 8}</span>` : '');
+  return `<tr class="dev" data-ip="${esc(d.ip)}" style="--c:${svcColor(d.service)}">${plan ? `<td>${planCell(d)}</td>` : ''}
+    <td class="mono"><span class="sw" style="--c:${svcColor(d.service)}"></span>${esc(d.ip)}${d.isGateway ? ' <span class="chip">gateway</span>' : ''}${d.foreign ? ' <span class="pill bad" title="' + esc(d.subnetNote) + '">other subnet</span>' : ''}</td>
+    <td>${addrChip(d)}</td>
+    <td>${esc(nm) || '<span class="muted">—</span>'}${d._new ? '<span class="new">new</span>' : ''}${d.hostnames.length && d.hostnames[0] !== nm ? `<div class="muted small">${esc(d.hostnames[0])}</div>` : ''}</td>
+    <td class="${d.confidence === 'low' ? 'conf-low' : ''}">${esc(modelLine(d)) || '<span class="muted">—</span>'}${d.serial ? `<div class="muted small">S/N ${esc(d.serial)}</div>` : ''}</td>
+    <td>${esc(d.kind) || '<span class="muted">—</span>'}</td>
+    <td class="mono">${esc(d.mac) || '<span class="muted">—</span>'}<div class="muted small" style="font-family:var(--font-ui)">${esc(d.vendor)}</div></td>
+    <td class="hide-sm small">${esc(d.firmware) || (d.firmwareHint ? `<span class="muted">${esc(d.firmwareHint)}</span>` : '<span class="muted">—</span>')}</td>
+    <td class="hide-sm">${ports || '<span class="muted small">none</span>'}</td>
+    <td class="hide-sm small muted">${esc(d.seenBy.join(' · '))}</td></tr>`;
+}
+
+function openDrawer(ip) {
+  const d = scanData.devices.find((x) => x.ip === ip); if (!d) return;
+  sel = ip;
+  const n = notes[noteKey(d)] || {};
+  const kv = (rows) => '<div class="kv">' + rows.filter(([, v]) => v !== '' && v !== null && v !== undefined).map(([k, v]) => `<div>${k}</div><div>${v}</div>`).join('') + '</div>';
+  const webLinks = d.ports.filter((p) => [80, 443, 8080, 8443, 8000, 5000, 9090, 1400].includes(p.port)).map((p) => {
+    const proto = [443, 8443].includes(p.port) ? 'https' : 'http'; const path = p.port === 1400 ? '/support/review' : '/';
+    return `<a href="${proto}://${d.ip}${[80, 443].includes(p.port) ? '' : ':' + p.port}${path}" target="_blank" rel="noopener">${proto}://${d.ip}${[80, 443].includes(p.port) ? '' : ':' + p.port}${path}</a>`;
+  });
+  $('#drawer').innerHTML = `
+    <div class="row" style="justify-content:space-between"><span class="pill info" style="border-color:${svcColor(d.service)}">${esc(d.serviceLabel)}</span><button class="ghost" id="dClose">✕</button></div>
+    <h3>${esc(nameOf(d) || d.kind || d.ip)}</h3>
+    <div class="muted">${esc([modelLine(d), d.kind].filter(Boolean).join(' · '))} ${d.confidence !== 'high' ? `<span class="pill ${d.confidence === 'low' ? 'warn' : 'info'}">${d.confidence} confidence</span>` : ''}</div>
+    ${d.foreign ? `<div class="advice" style="--c:var(--bad)"><b>On another subnet.</b> ${esc(d.subnetNote)}</div>` : ''}
+    ${d.conflict ? `<div class="advice" style="--c:var(--bad)"><b>IP conflict.</b> ${esc(d.conflict.note)}: ${esc(d.conflict.sources.join(', '))}</div>` : ''}
+    ${d.sadp && d.sadp.activated === false ? '<div class="advice" style="--c:var(--warn)"><b>Not activated.</b> Activate it in SADP or iVMS-4200 (set the admin password) before it can be used.</div>' : ''}
+    ${advice.get(d.ip) ? `<div class="advice" style="--c:${{ ok: 'var(--ok)', warn: 'var(--warn)', info: 'var(--muted)' }[advice.get(d.ip).level]}"><b>${esc(advice.get(d.ip).title)}</b>${advice.get(d.ip).items.length ? '<ul style="margin:4px 0 0;padding-left:16px">' + advice.get(d.ip).items.map((i) => `<li>${i}</li>`).join('') + '</ul>' : ''}</div>` : ''}
+    <div class="row" style="margin-top:8px"><button class="btn-sm" data-tool="ping">Ping</button><button class="btn-sm" data-tool="ports">Ports</button><button class="btn-sm" data-tool="trace">Trace</button>${d.mac ? '<button class="btn-sm" data-tool="wol">Wake</button>' : ''}</div>
+    <h4>Your name and notes (${mode === 'app' ? 'kept on this tablet' : 'kept on the agent'})</h4>
+    <div class="row"><input id="nName" placeholder="e.g. Lounge TV" value="${esc(n.name || '')}" style="flex:1"></div>
+    <textarea id="nNote" rows="2" style="width:100%;margin-top:6px" placeholder="Notes (port, location, login hint…)">${esc(n.note || '')}</textarea>
+    <div class="row" style="margin-top:6px"><button id="nSave" class="primary">Save</button><button id="reprobe">Re-scan this device</button></div>
+    <h4>Identity</h4>
+    ${kv([['IP', `<span class="mono">${esc(d.ip)}</span>`], ['Address', addrOf(d).label ? `${addrChip(d)} <span class="small muted">${esc(addrOf(d).note)}</span>` : `<span class="small muted">${esc(addrOf(d).note)}</span>`], ['MAC', `<span class="mono">${esc(d.mac)}</span>${d.randomMac ? ' <span class="pill warn">private address</span>' : ''}`], ['MAC maker', esc(d.vendor)],
+      ['Make', esc(d.make)], ['Model', esc(d.model)], ['Firmware', esc(d.firmware || d.firmwareHint)], ['Serial', esc(d.serial)], ['Names', esc(d.hostnames.join(', '))],
+      ['Control4', d.c4Driver ? `driver <span class="mono">${esc(d.c4Driver)}</span>` : ''], ['Response', d.latency != null ? d.latency + ' ms' : ''], ['Seen by', esc(d.seenBy.join(', '))]])}
+    ${webLinks.length ? `<h4>Web pages</h4>${webLinks.join('<br>')}` : ''}
+    <h4>Why we think this</h4><ul class="ev small">${d.evidence.map((e) => `<li>${esc(e)}</li>`).join('') || '<li class="muted">Nothing beyond the MAC address.</li>'}</ul>
+    ${d.ports.length ? `<h4>Open TCP ports</h4>${d.ports.map((p) => `<span class="chip">${p.port}${p.label ? ' ' + esc(p.label) : ''}</span>`).join('')}` : ''}
+    ${d.services.length ? `<h4>Bonjour (mDNS) services</h4>${d.services.map((s) => `<div class="small"><b>${esc(s.type)}</b> ${esc(s.name)}${s.port ? ' :' + s.port : ''}<div class="muted mono" style="font-size:11px;word-break:break-all">${esc(Object.entries(s.txt || {}).map(([k, v]) => k + '=' + v).join('  ').slice(0, 300))}</div></div>`).join('')}` : ''}
+    ${d.upnp.length ? `<h4>UPnP description</h4>${d.upnp.map((u) => kv(Object.entries(u).filter(([k]) => k !== 'location').map(([k, v]) => [esc(k), esc(v)]))).join('<hr style="border-color:var(--line)">')}` : ''}
+    ${d.ssdpServer ? `<h4>SSDP server</h4><div class="small mono">${esc(d.ssdpServer)}</div>` : ''}
+    ${d.sddp ? `<h4>Control4 SDDP</h4>${kv(Object.entries(d.sddp).filter(([, v]) => v).map(([k, v]) => [esc(k), esc(v)]))}` : ''}
+    ${d.ubnt ? `<h4>Ubiquiti discovery</h4>${kv(Object.entries(d.ubnt).filter(([, v]) => v).map(([k, v]) => [esc(k), esc(v)]))}` : ''}
+    ${d.sadp ? `<h4>Hikvision SADP</h4>${kv(Object.entries(d.sadp).filter(([k, v]) => v !== null && v !== '' && k !== 'from' && k !== 'otherMacs').map(([k, v]) => [esc(k), esc(String(v))]))}` : ''}
+    ${d.dahua ? `<h4>Dahua discovery</h4>${kv(Object.entries(d.dahua).filter(([k, v]) => v !== null && v !== '' && k !== 'from' && k !== 'otherMacs').map(([k, v]) => [esc(k), esc(String(v))]))}` : ''}
+    ${d.onvif ? `<h4>ONVIF</h4>${kv(Object.entries(d.onvif).filter(([, v]) => v).map(([k, v]) => [esc(k), esc(v)]))}` : ''}
+    ${d.web.length ? `<h4>Web servers</h4>${d.web.map((w) => `<div class="small">:${w.port} ${esc(w.title)} <span class="muted">${esc(w.server)} ${esc(w.realm)}</span></div>`).join('')}` : ''}
+    ${d.netbios && d.netbios.name ? `<h4>NetBIOS</h4><div class="small">${esc(d.netbios.name)} ${d.netbios.group ? '· ' + esc(d.netbios.group) : ''}</div>` : ''}`;
+  $('#drawer').classList.add('open');
+  $('#drawer').querySelectorAll('[data-tool]').forEach((b) => b.onclick = () => openTool(b.dataset.tool, b.dataset.tool === 'wol' ? d.mac : d.ip));
+  $('#dClose').onclick = () => { $('#drawer').classList.remove('open'); sel = null; };
+  $('#nSave').onclick = async () => { try { const r = await api('note', { key: noteKey(d), name: $('#nName').value, note: $('#nNote').value }); notes = r.notes; toast('Saved'); renderTable(); renderSchedule(); if (plan) renderCheck(); } catch (e) { toast(e.message, true); } };
+  $('#reprobe').onclick = async (ev) => { ev.target.disabled = true; ev.target.textContent = 'Scanning…'; try { const r = await api('probe', { ip: d.ip }); const i = scanData.devices.findIndex((x) => x.ip === d.ip); scanData.devices[i] = r.device; render(); openDrawer(d.ip); toast('Updated'); } catch (e) { toast(e.message, true); ev.target.disabled = false; ev.target.textContent = 'Re-scan this device'; } };
+}
+
+// ── Project check ─────────────────────────────────────────
+// The plan is the project's Network Map document (network_configs). IP = subnet.x.TAG.octet as the Network Map works it out.
+function planIp(cfg, d) {
+  const o = String(d.lastOctet || '').trim(); if (!o) return '';
+  const v = (cfg.vlans || []).find((x) => String(x.id) === String(d.vlan || 1));
+  const parts = String(cfg.subnet || '192.168.1').split('.');
+  return v && v.tag !== undefined && v.tag !== '' ? `${parts[0]}.${parts[1]}.${v.tag}.${o}` : `${cfg.subnet}.${o}`;
+}
+const normMac = (m) => { const h = String(m || '').replace(/[^0-9a-f]/gi, '').toUpperCase(); return h.length === 12 ? h.match(/../g).join(':') : ''; };
+async function loadProjects() {
+  try {
+    const rows = await rest('/network_configs?select=project_id,updated_at,projects(name,ref)&order=updated_at.desc&limit=200');
+    $('#projPick').innerHTML = '<option value="">Pick a project with a network plan…</option>' + rows.map((r) => `<option value="${esc(r.project_id)}">${esc((r.projects && (r.projects.ref || r.projects.name)) || r.project_id)}${r.projects && r.projects.ref && r.projects.name ? ' · ' + esc(r.projects.name) : ''}</option>`).join('');
+    const last = store.get('project', ''); if (last && rows.some((r) => r.project_id === last)) $('#projPick').value = last;
+    $('#projState').textContent = rows.length ? '' : 'No plans visible. Open this page from apps.sonor.co.uk while signed in.';
+  } catch (e) {
+    if (mode === 'demo') { $('#projState').textContent = 'Demo: using the sample plan.'; return useDemoPlan(); }
+    if (mode === 'app') { $('#projState').textContent = 'The project check needs a Sonor sign-in, which the tablet app does not have yet. Use it from apps.sonor.co.uk for now.'; return; }
+    $('#projState').innerHTML = `Project plans need you signed in to Sonor apps. <a href="${HOSTED_URL}?agent=${encodeURIComponent(location.host)}" target="_blank">Open the scanner on apps.sonor.co.uk</a> and connect it to this agent.`;
+  }
+}
+async function loadPlan() {
+  const pid = $('#projPick').value; if (!pid) return toast('Pick a project', true);
+  store.set('project', pid);
+  try {
+    const [row] = await rest(`/network_configs?project_id=eq.${pid}&select=id,config,revision,updated_at,projects(name,ref)`);
+    if (!row) throw new Error('This project has no network plan yet');
+    const cfg = row.config || {};
+    plan = { projectId: pid, rowId: row.id, revision: row.revision, updatedAt: row.updated_at, name: (row.projects && (row.projects.ref || row.projects.name)) || '', config: cfg,
+      devices: (cfg.devices || []).map((d, i) => ({ ...d, _i: i, _ip: planIp(cfg, d), _mac: normMac(d.mac) })).filter((d) => d.takeoffStatus !== 'removed') };
+    $('#projState').textContent = `${plan.devices.length} planned devices · plan saved ${new Date(row.updated_at).toLocaleString('en-GB')}`;
+    buildAdvice(); renderCheck(); renderTable(); renderIssues();
+  } catch (e) { toast(e.message, true); }
+}
+function compare() {
+  const found = scanData ? scanData.devices.slice() : [];
+  const used = new Set(); const rows = [];
+  const byMac = new Map(found.filter((d) => d.mac).map((d) => [d.mac, d]));
+  const byIp = new Map(found.map((d) => [d.ip, d]));
+  for (const p of plan.devices) {
+    let f = null; let how = '';
+    if (p._mac && byMac.has(p._mac) && !used.has(byMac.get(p._mac).ip)) { f = byMac.get(p._mac); how = 'MAC'; }
+    else if (p._ip && byIp.has(p._ip) && !used.has(p._ip)) { f = byIp.get(p._ip); how = 'IP'; }
+    let status;
+    if (!f) status = !p._ip && !p._mac ? ['info', 'No IP or MAC in plan'] : ['bad', 'Not found'];
+    else {
+      used.add(f.ip);
+      if (how === 'MAC' && p._ip && f.ip !== p._ip) status = ['warn', `Wrong IP (found at ${f.ip})`];
+      else if (how === 'IP' && p._mac && f.mac && f.mac !== p._mac) status = ['warn', 'Different device at this IP (MAC differs)'];
+      else if (how === 'IP' && !p._mac) status = ['ok', 'Found · MAC can be filled'];
+      else status = ['ok', 'Found'];
+    }
+    rows.push({ p, f, how, status });
+  }
+  const extra = found.filter((d) => !used.has(d.ip) && !isClient(d) && !d.isSelf);
+  return { rows, extra };
+}
+function renderCheck() {
+  if (!plan) { $('#checkTable').innerHTML = ''; $('#checkTiles').innerHTML = ''; $('#checkActions').hidden = true; return; }
+  if (!scanData) { $('#checkTable').innerHTML = '<tr><td class="muted">Run a scan first.</td></tr>'; return; }
+  const { rows, extra } = compare();
+  const c = (t) => rows.filter((r) => r.status[0] === t).length;
+  $('#checkTiles').innerHTML = `<div class="tile" style="--c:var(--ok)"><b>${c('ok')}</b><span>Found as planned</span></div><div class="tile" style="--c:var(--warn)"><b>${c('warn')}</b><span>Wrong IP / MAC</span></div>
+    <div class="tile" style="--c:var(--bad)"><b>${c('bad')}</b><span>Planned, not found</span></div><div class="tile" style="--c:var(--line)"><b>${c('info')}</b><span>Not addressed in plan</span></div>
+    <div class="tile" style="--c:var(--accent-c)"><b>${extra.length}</b><span>On network, not in plan</span></div>`;
+  const fillable = rows.filter((r) => r.f && r.status[0] === 'ok' && ((!r.p._mac && r.f.mac && !r.f.randomMac) || (!r.p.serial && r.f.serial))).length;
+  $('#checkActions').hidden = false; $('#fillMacs').disabled = !fillable; $('#fillMacs').textContent = `Fill ${fillable} missing MAC${fillable === 1 ? '' : 's'} / serials into Network Map`;
+  let html = '<thead><tr><th>Status</th><th>Planned device</th><th>Location</th><th>Planned IP</th><th>Planned MAC</th><th>Found</th><th>Found MAC · firmware</th></tr></thead><tbody>';
+  const order = { warn: 0, bad: 1, ok: 2, info: 3 };
+  for (const r of rows.slice().sort((a, b) => order[a.status[0]] - order[b.status[0]] || ipNum(a.p._ip || '255.255.255.255') - ipNum(b.p._ip || '255.255.255.255'))) {
+    html += `<tr><td><span class="pill ${r.status[0]}">${esc(r.status[1])}</span></td><td><span class="sw" style="--c:${svcColor(r.p.service)}"></span>${esc(r.p.device)}<div class="muted small">${esc(r.p.notes || '').slice(0, 80)}</div></td>
+      <td class="small">${esc(r.p.location || '')}</td><td class="mono">${esc(r.p._ip) || '<span class="muted">—</span>'}</td><td class="mono">${esc(r.p._mac) || '<span class="muted">—</span>'}</td>
+      <td>${r.f ? `<a href="#" data-ip="${esc(r.f.ip)}">${esc(r.f.ip)}</a> ${esc(nameOf(r.f) || modelLine(r.f) || r.f.kind)}` : ''}</td><td class="mono small">${r.f ? esc(r.f.mac) + (r.f.firmware ? `<div class="muted" style="font-family:var(--font-ui)">${esc(r.f.firmware)}</div>` : '') : ''}</td></tr>`;
+  }
+  if (extra.length) {
+    html += `<tr class="grp" style="--c:var(--accent-c)"><td colspan="7">On the network but not in the plan <span class="muted small">· personal devices hidden</span></td></tr>`;
+    for (const d of extra) html += `<tr><td><span class="pill info">Not in plan</span></td><td><span class="sw" style="--c:${svcColor(d.service)}"></span>${esc(nameOf(d) || d.kind || 'Unknown')}</td><td></td><td></td><td></td><td><a href="#" data-ip="${esc(d.ip)}">${esc(d.ip)}</a> ${esc(modelLine(d))}</td><td class="mono small">${esc(d.mac)}<div class="muted" style="font-family:var(--font-ui)">${esc(d.vendor)}</div></td></tr>`;
+  }
+  $('#checkTable').innerHTML = html + '</tbody>';
+  $('#checkTable').querySelectorAll('a[data-ip]').forEach((a) => a.onclick = (e) => { e.preventDefault(); openDrawer(a.dataset.ip); });
+}
+// Write back: only fills EMPTY mac / serial fields on devices matched by IP. Re-reads the plan first so nothing typed in
+// Network Map since loading is lost, and refuses if the plan changed in between.
+async function fillMacs() {
+  if (!confirm('Fill the missing MAC addresses and serials into this project\'s Network Map plan? Only empty fields are filled; nothing else changes.')) return;
+  try {
+    const [row] = await rest(`/network_configs?project_id=eq.${plan.projectId}&select=id,config,revision,updated_at`);
+    if (row.updated_at !== plan.updatedAt) { toast('The plan changed since you loaded it. Load it again and re-check.', true); return; }
+    const cfg = row.config; const { rows } = compare(); let n = 0;
+    for (const r of rows) {
+      if (!r.f || r.status[0] !== 'ok') continue;
+      const d = cfg.devices[r.p._i]; if (!d) continue;
+      if (!normMac(d.mac) && r.f.mac && !r.f.randomMac) { d.mac = r.f.mac; n++; }
+      if (!String(d.serial || '').trim() && r.f.serial) { d.serial = r.f.serial; n++; }
+    }
+    if (!n) return toast('Nothing to fill');
+    await rest(`/network_configs?id=eq.${row.id}&updated_at=eq.${encodeURIComponent(row.updated_at)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ config: cfg, revision: (row.revision || 0) + 1, updated_at: new Date().toISOString() }) });
+    toast(`Filled ${n} field${n === 1 ? '' : 's'} in Network Map`); $('#fillState').textContent = 'Reload Network Map to see them.';
+    await loadPlan();
+  } catch (e) { toast('Could not save: ' + e.message, true); }
+}
+
+// ── Demo plan (so the plan column, tooltips and Check tab can be tried) ──
+async function useDemoPlan() {
+  const cfg = await (await fetch('data/demo-plan.json')).json();
+  plan = { projectId: 'demo', rowId: 0, revision: 1, updatedAt: '', name: cfg.name, config: cfg, devices: cfg.devices.map((d, i) => ({ ...d, _i: i, _ip: planIp(cfg, d), _mac: normMac(d.mac) })) };
+  $('#projPick').innerHTML = `<option value="demo">${esc(cfg.name)}</option>`; $('#fillMacs').disabled = true;
+  buildAdvice(); renderCheck(); renderTable(); renderIssues();
+}
+
+// ── Discovery tab: one panel per protocol ─────────────────
+const PROTOS = [
+  ['sddp', 'Control4 SDDP', 'UDP 1902. Controllers, touch screens, C4 lighting and audio, and SDDP-certified kit (Araknis, WattBox, Luma, Triad…).', (d) => d.sddp, [['Type', (x) => x.type], ['Model', (x) => x.model], ['Proxy', (x) => x.primaryProxy], ['Host', (x) => x.host], ['Driver', (x) => x.driver]]],
+  ['sadp', 'Hikvision SADP', 'UDP 37020. Hikvision cameras, NVRs and door stations, including un-activated ones and ones on the wrong subnet.', (d) => d.sadp, [['Model', (x) => x.model], ['Serial', (x) => x.serial], ['Firmware', (x) => x.firmware], ['DHCP', (x) => x.dhcp === null ? '' : x.dhcp ? 'on' : 'off (fixed)'], ['Activated', (x) => x.activated === null ? '' : x.activated ? 'yes' : 'NO'], ['Mask / gateway', (x) => [x.mask, x.gateway].filter(Boolean).join(' · ')]]],
+  ['dahua', 'Dahua', 'UDP 37810 / 5050. Dahua and OEM (Lorex, Amcrest…) cameras and recorders.', (d) => d.dahua, [['Model', (x) => x.model], ['Serial', (x) => x.serial], ['Firmware', (x) => x.firmware], ['DHCP', (x) => x.dhcp === null ? '' : x.dhcp ? 'on' : 'off (fixed)'], ['Mask / gateway', (x) => [x.mask, x.gateway].filter(Boolean).join(' · ')]]],
+  ['ubnt', 'UniFi / Ubiquiti', 'UDP 10001. Access points, switches and gateways.', (d) => d.ubnt, [['Model', (x) => x.model], ['Firmware', (x) => x.firmware], ['Hostname', (x) => x.hostname], ['SSID', (x) => x.essid]]],
+  ['mdns', 'Bonjour (mDNS)', 'UDP 5353. Apple TV, AirPlay, Cast, Lutron, Hue, HomeKit, Sonos, Shelly, Sky Stream…', (d) => d.services.length && d.services, [['Services', (x) => x.map((s) => s.type.replace(/^_|\._(tcp|udp)$/g, '')).join(', ')], ['Name', (x) => x[0].name]]],
+  ['ssdp', 'SSDP / UPnP', 'UDP 1900. TVs, Sky Q, AV receivers, NAS, routers.', (d) => (d.upnp.length || d.ssdpServer) && { u: d.upnp[0] || {}, server: d.ssdpServer }, [['Friendly name', (x) => x.u.friendlyName], ['Model', (x) => [x.u.manufacturer, x.u.modelName].filter(Boolean).join(' ')], ['Serial', (x) => x.u.serial], ['Server', (x) => x.server]]],
+  ['onvif', 'ONVIF', 'UDP 3702. IP cameras and NVRs from any maker.', (d) => d.onvif, [['Name', (x) => x.name], ['Hardware', (x) => x.hardware], ['Service URL', (x) => x.xaddrs]]],
+  ['beacon', 'AMX beacons', 'UDP 9131. Global Caché iTach / GC-100 and some AMX / Extron kit.', (d) => d.beacon, [['Make', (x) => x.make], ['Model', (x) => x.model], ['Firmware', (x) => x.firmware]]],
+  ['sonos', 'Sonos', 'Port 1400. Room, model, firmware and serial from each player.', (d) => d.ports.some((p) => p.port === 1400) && d.make === 'Sonos' && d, [['Room', (x) => x.name], ['Model', (x) => x.model], ['Firmware', (x) => x.firmware], ['Serial', (x) => x.serial]]],
+  ['netbios', 'NetBIOS', 'UDP 137. Windows PCs, NAS boxes and some printers.', (d) => d.netbios && d.netbios.name && d.netbios, [['Name', (x) => x.name], ['Workgroup', (x) => x.group]]],
+];
+function renderDiscovery() {
+  if (!scanData) { $('#discList').innerHTML = '<div class="empty">No scan yet.</div>'; return; }
+  $('#discList').innerHTML = PROTOS.map(([key, title, what, get, cols]) => {
+    const rows = scanData.devices.map((d) => [d, get(d)]).filter(([, x]) => x);
+    return `<div class="panel disc" style="padding:0"><div class="head"><span class="lbl" style="color:var(--text)">${esc(title)}</span><span class="n">${rows.length} found</span></div>
+      <div class="what">${esc(what)}</div>
+      ${rows.length ? `<div style="overflow-x:auto"><table><thead><tr><th>IP</th>${cols.map(([l]) => `<th>${l}</th>`).join('')}<th>MAC</th></tr></thead><tbody>${rows.map(([d, x]) => `<tr class="dev" data-ip="${esc(d.ip)}" style="--c:${svcColor(d.service)}"><td class="mono"><span class="sw" style="--c:${svcColor(d.service)}"></span>${esc(d.ip)}${d.foreign ? ' <span class="pill bad">other subnet</span>' : ''}</td>${cols.map(([, f]) => `<td class="small">${esc(f(x) || '') || '<span class="muted">—</span>'}</td>`).join('')}<td class="mono small">${esc(d.mac)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="muted small" style="padding:8px 12px 12px">Nothing answered.</div>'}</div>`;
+  }).join('');
+  $('#discList').querySelectorAll('tr.dev').forEach((tr) => tr.onclick = () => openDrawer(tr.dataset.ip));
+}
+
+// ── Issues tab ────────────────────────────────────────────
+function issues() {
+  if (!scanData) return [];
+  const D = scanData.devices; const out = [];
+  const add = (level, title, fix, list) => { if (list.length) out.push({ level, title, fix, list }); };
+  add('bad', 'On the wrong subnet', 'These answered discovery from an address outside this network. Re-address them (SADP / ConfigTool / the maker\'s app) into the right range, or check the VLAN and routing if they should be elsewhere.', D.filter((d) => d.foreign));
+  add('bad', 'IP address conflicts', 'More than one MAC answered for the same address. Unplug devices until it clears, then give each a unique fixed address or reservation.', D.filter((d) => d.conflict));
+  add('warn', 'Not activated (Hikvision)', 'Activate in SADP or iVMS-4200: set the admin password, then set the IP.', D.filter((d) => d.sadp && d.sadp.activated === false));
+  add('bad', 'No DHCP answer (169.254 address)', 'The device asked for an address and nobody answered: check its VLAN / switch port and that the DHCP server is running.', D.filter((d) => (d.addressing || {}).mode === 'selfassigned'));
+  add('warn', 'Still on a factory default address', 'Move these to their planned addresses so a second unit out of the box does not clash.', D.filter((d) => (d.addressing || {}).source === 'factory'));
+  add('info', 'Set to DHCP by the device itself', 'Fine if the router has a reservation for each; otherwise their address can change.', D.filter((d) => (d.addressing || {}).mode === 'dhcp' && (d.addressing || {}).source === 'device'));
+  if (plan) add('warn', 'Differs from the project plan', 'Hover or tap the ! in the Plan column for what to change.', D.filter((d) => (advice.get(d.ip) || {}).level === 'warn'));
+  add('info', 'Unidentified', 'Nothing told us what these are. Tap one for its ports and MAC maker, or re-scan it once it has finished booting.', D.filter((d) => d.service === 'ungrouped' && !d.isSelf));
+  return out;
+}
+function renderIssues() {
+  const list = issues(); const n = list.filter((i) => i.level !== 'info').reduce((a, i) => a + i.list.length, 0);
+  $('#issueCount').textContent = n; $('#issueCount').className = 'count' + (n ? '' : ' zero');
+  if (!scanData) { $('#issueList').innerHTML = '<div class="empty">No scan yet.</div>'; return; }
+  if (!list.length) { $('#issueList').innerHTML = '<div class="empty">No issues found on this scan.</div>'; return; }
+  const col = { bad: 'var(--bad)', warn: 'var(--warn)', info: 'var(--muted)' };
+  $('#issueList').innerHTML = list.map((i) => `<div class="panel" style="border-left:4px solid ${col[i.level]}"><div class="row" style="justify-content:space-between"><span class="lbl" style="color:var(--text)">${esc(i.title)}</span><span class="pill ${i.level === 'info' ? 'info' : i.level}">${i.list.length}</span></div>
+    <p class="muted small" style="margin:6px 0 8px">${esc(i.fix)}</p>
+    <table><tbody>${i.list.map((d) => `<tr class="dev" data-ip="${esc(d.ip)}" style="--c:${svcColor(d.service)}"><td class="mono" style="width:140px"><span class="sw" style="--c:${svcColor(d.service)}"></span>${esc(d.ip)}</td><td>${esc(nameOf(d) || modelLine(d) || d.kind || d.vendor || 'Unknown')}</td><td class="small muted">${esc(d.subnetNote || (d.conflict && d.conflict.sources.join(' · ')) || (d.addressing || {}).note || d.kind || '')}</td><td class="mono small">${esc(d.mac)}</td></tr>`).join('')}</tbody></table></div>`).join('');
+  $('#issueList').querySelectorAll('tr.dev').forEach((tr) => tr.onclick = () => openDrawer(tr.dataset.ip));
+}
+
+// ── Tools tab ─────────────────────────────────────────────
+function openTool(tool, value) {
+  $('#drawer').classList.remove('open');
+  document.querySelector('.tabs button[data-tab="tools"]').click();
+  if (tool === 'ping') { $('#pingHost').value = value; if (!pinging) $('#pingGo').click(); }
+  if (tool === 'ports') { $('#portHost').value = value; $('#portGo').click(); }
+  if (tool === 'trace') { $('#traceHost').value = value; $('#traceGo').click(); }
+  if (tool === 'wol') { $('#wolMac').value = value; }
+}
+let pinging = false; let pings = [];
+function drawPing() {
+  const c = $('#pingGraph'); const g = c.getContext('2d'); const W = c.width; const H = c.height;
+  g.clearRect(0, 0, W, H);
+  const last = pings.slice(-90); const okv = last.filter((p) => p.ok).map((p) => p.ms);
+  const max = Math.max(10, ...okv) * 1.15; const bw = W / 90;
+  g.strokeStyle = 'rgba(255,255,255,.07)'; g.lineWidth = 1;
+  for (let i = 1; i < 4; i++) { g.beginPath(); g.moveTo(0, H * i / 4); g.lineTo(W, H * i / 4); g.stroke(); }
+  last.forEach((p, i) => { const x = i * bw; if (!p.ok) { g.fillStyle = 'rgba(236,96,97,.55)'; g.fillRect(x, 0, Math.max(2, bw - 2), H); return; } const h = Math.max(3, (p.ms / max) * (H - 10)); g.fillStyle = p.ms > 50 ? '#f5d05c' : '#4bb9d3'; g.fillRect(x, H - h, Math.max(2, bw - 2), h); });
+  g.fillStyle = '#8E8E93'; g.font = '20px DM Mono, monospace'; g.textAlign = 'right'; g.fillText(Math.round(max) + ' ms', W - 8, 24); g.textAlign = 'left';
+  const sent = pings.length; const got = pings.filter((p) => p.ok); const ms = got.map((p) => p.ms);
+  const avg = ms.length ? ms.reduce((a, b) => a + b, 0) / ms.length : 0;
+  const jitter = ms.length > 1 ? ms.slice(1).reduce((a, v, i) => a + Math.abs(v - ms[i]), 0) / (ms.length - 1) : 0;
+  $('#pingStats').innerHTML = sent ? `<span>Sent <b>${sent}</b></span><span>Lost <b style="color:${sent - got.length ? 'var(--bad)' : 'inherit'}">${sent - got.length} (${Math.round(100 * (sent - got.length) / sent)}%)</b></span><span>Min <b>${ms.length ? Math.min(...ms) : '—'}</b></span><span>Avg <b>${ms.length ? avg.toFixed(1) : '—'}</b></span><span>Max <b>${ms.length ? Math.max(...ms) : '—'}</b></span><span>Jitter <b>${jitter.toFixed(1)}</b> ms</span><span>${esc((got[got.length - 1] || {}).via || '')}</span>` : '';
+}
+async function pingLoop() {
+  const host = $('#pingHost').value.trim();
+  while (pinging) {
+    const t0 = Date.now();
+    try { const r = await api('ping', { host }); pings.push(r); } catch (e) { toast(e.message, true); break; }
+    drawPing();
+    await new Promise((r) => setTimeout(r, Math.max(0, 1000 - (Date.now() - t0))));
+  }
+  pinging = false; $('#pingGo').textContent = 'Start';
+}
+function subnetCalc(txt) {
+  const m = String(txt).trim().match(/^(\d+\.\d+\.\d+\.\d+)\s*(?:\/\s*(\d+)|\s+(\d+\.\d+\.\d+\.\d+))?$/); if (!m) return 'Enter 192.168.1.0/24 or 192.168.1.20 255.255.255.0';
+  let bits = m[2] !== undefined ? Number(m[2]) : m[3] ? ipNum(m[3]).toString(2).replace(/0+$/, '').length : 24;
+  if (bits < 0 || bits > 32) return 'Prefix must be 0 to 32';
+  const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0; const ip = ipNum(m[1]);
+  const netw = (ip & mask) >>> 0; const bc = (netw | (~mask >>> 0)) >>> 0; const toIp = (n) => [n >>> 24, (n >>> 16) & 255, (n >>> 8) & 255, n & 255].join('.');
+  const hosts = bits >= 31 ? 2 ** (32 - bits) : 2 ** (32 - bits) - 2;
+  return [`Network     ${toIp(netw)}/${bits}`, `Mask        ${toIp(mask)}`, `Wildcard    ${toIp((~mask) >>> 0)}`, `Broadcast   ${toIp(bc)}`, `Usable      ${bits >= 31 ? toIp(netw) : toIp(netw + 1)} – ${bits >= 31 ? toIp(bc) : toIp(bc - 1)}`, `Hosts       ${hosts.toLocaleString('en-GB')}`,
+    `This IP     ${toIp(ip)}${ip === netw && bits < 31 ? '  (network address: not usable)' : ip === bc && bits < 31 ? '  (broadcast: not usable)' : ''}`].join('\n');
+}
+async function runTool(btn, out, fn) {
+  btn.disabled = true; $(out).hidden = false; $(out).textContent = 'Working…';
+  try { $(out).textContent = await fn(); } catch (e) { $(out).textContent = e.message; } finally { btn.disabled = false; }
+}
+
+// ── IP schedule (paper) ───────────────────────────────────
+function renderSchedule() {
+  if (!scanData) { $('#paper').innerHTML = '<p>No scan yet.</p>'; return; }
+  const list = scanData.devices.filter((d) => $('#schClients').checked || !isClient(d)).filter((d) => !d.isSelf);
+  const showPorts = $('#schPorts').checked;
+  let h = `<h1>Network IP schedule${plan ? ' · ' + esc(plan.name) : (scanData.label ? ' · ' + esc(scanData.label) : '')}</h1>
+    <div class="sub">As found by Sonor Network Scanner · ${esc(new Date(scanData.startedAt).toLocaleString('en-GB'))} · ${esc(scanData.targets.join(', '))} · ${list.length} devices${scanData.gateways.length ? ' · gateway ' + esc(scanData.gateways.join(', ')) : ''}</div>
+    <table><thead><tr><th>IP</th><th>Addr.</th><th>Name</th><th>Make / model</th><th>Type</th><th>MAC</th><th>Firmware</th><th>Serial</th>${showPorts ? '<th>Ports</th>' : ''}<th>Notes</th></tr></thead><tbody>`;
+  for (const [k, l] of SERVICES) {
+    const g = list.filter((d) => d.service === k).sort((a, b) => ipNum(a.ip) - ipNum(b.ip)); if (!g.length) continue;
+    h += `<tr class="grp" style="--c:${svcColor(k)}"><td colspan="${showPorts ? 10 : 9}">${esc(l)} · ${g.length}</td></tr>`;
+    for (const d of g) h += `<tr><td class="mono">${esc(d.ip)}</td><td>${esc(addrOf(d).label)}</td><td>${esc(nameOf(d))}</td><td>${esc(modelLine(d))}</td><td>${esc(d.kind)}</td><td class="mono">${esc(d.mac)}</td><td>${esc(d.firmware)}</td><td>${esc(d.serial)}</td>${showPorts ? `<td>${d.ports.map((p) => `<span class="chip">${p.port}</span>`).join('')}</td>` : ''}<td>${esc((notes[noteKey(d)] || {}).note || '')}</td></tr>`;
+  }
+  $('#paper').innerHTML = h + '</tbody></table>';
+}
+
+// ── Wiring ────────────────────────────────────────────────
+document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
+  for (const t of ['devices', 'discovery', 'issues', 'check', 'tools', 'schedule']) $('#tab-' + t).hidden = b.dataset.tab !== t;
+  hideTip();
+  if (b.dataset.tab === 'check' && $('#projPick').options.length < 2) loadProjects();
+  store.set('tab', b.dataset.tab);
+});
+$('#scanBtn').onclick = async () => {
+  try { await api('scan', { targets: $('#targets').value, label: $('#label').value }); store.set('targets', $('#targets').value); poll(); }
+  catch (e) { toast(e.message, true); }
+};
+$('#scanPick').onchange = async (e) => { const opts = [...e.target.options].map((o) => o.value); const i = opts.indexOf(e.target.value); await loadScan(e.target.value, opts[i + 1]); };
+$('#q').oninput = renderTable; $('#groupBy').onchange = () => { store.set('group', $('#groupBy').value); renderTable(); };
+$('#hideClients').onchange = () => { store.set('hideClients', $('#hideClients').checked); renderTable(); }; $('#onlyNew').onchange = renderTable;
+$('#projLoad').onclick = () => (mode === 'demo' ? useDemoPlan() : loadPlan());
+$('#svcTint').onchange = () => { store.set('svcTint', $('#svcTint').checked); document.body.classList.toggle('svc-tint', $('#svcTint').checked); };
+$('#dhcpPool').onchange = () => { const v = $('#dhcpPool').value.trim(); if (v && !parsePool(v)) return toast('Use a range like 192.168.1.100-199 or 192.168.1.100-192.168.1.199', true); store.set('dhcpPool', v); if (scanData) { buildAdvice(); renderTable(); renderIssues(); renderSchedule(); } };
+$('#pingGo').onclick = () => { if (pinging) { pinging = false; return; } if (!$('#pingHost').value.trim()) return toast('Enter an address to ping', true); pings = []; pinging = true; $('#pingGo').textContent = 'Stop'; drawPing(); pingLoop(); };
+$('#portGo').onclick = (e) => runTool(e.target, '#portOut', async () => { const r = await api('ports', { host: $('#portHost').value.trim(), ports: $('#portList').value.trim() || 'common' }); return `${r.checked} ports checked in ${r.seconds}s · ${r.open.length} open · ${r.refused} refused (host is up)` + (r.open.length ? '\n\n' + r.open.map((p) => `${String(p.port).padEnd(6)} ${p.label}${p.banner ? '  “' + p.banner + '”' : ''}`).join('\n') : (r.refused ? '' : '\n\nNothing answered at all: host down, firewalled, or on a VLAN with no route.')); });
+$('#traceGo').onclick = (e) => runTool(e.target, '#traceOut', async () => { const r = await api('trace', { host: $('#traceHost').value.trim() }); return r.hops.map((h) => h.note || `${String(h.hop).padStart(2)}  ${(h.ip || '*').padEnd(16)} ${h.ms != null ? h.ms + ' ms' : ''}`).join('\n'); });
+$('#dnsGo').onclick = (e) => runTool(e.target, '#dnsOut', async () => { const r = await api('lookup', { name: $('#dnsName').value.trim() }); return (r.addresses.length ? r.addresses.join('\n') : 'No address found') + (r.names.length ? '\nName: ' + r.names.join(', ') : ''); });
+$('#wolGo').onclick = (e) => runTool(e.target, '#wolOut', async () => { const r = await api('wol', { mac: $('#wolMac').value.trim() }); return `Magic packet for ${r.mac} sent to ${r.sentTo.join(', ')}`; });
+$('#calcIn').oninput = () => { $('#calcOut').textContent = subnetCalc($('#calcIn').value || ($('#calcIn').placeholder.split(' ')[0])); };
+$('#calcOut').textContent = subnetCalc('192.168.20.0/22');
+$('#dhcpPool').value = store.get('dhcpPool', ''); $('#svcTint').checked = store.get('svcTint', true); document.body.classList.toggle('svc-tint', $('#svcTint').checked); $('#fillMacs').onclick = fillMacs;
+$('#schClients').onchange = renderSchedule; $('#schPorts').onchange = renderSchedule; $('#printBtn').onclick = () => window.print();
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('#drawer').classList.remove('open'); sel = null; } });
+$('#targets').value = store.get('targets', ''); $('#groupBy').value = store.get('group', 'service'); $('#hideClients').checked = store.get('hideClients', false);
+{ const t = store.get('tab', 'devices'); const b = document.querySelector(`.tabs button[data-tab="${t}"]`); if (b) b.click(); }
+
+if (!IS_BRIDGE_WINDOW) {
+  if (mode === 'demo') { $('#tab-devices').insertAdjacentHTML('afterbegin', '<div class="banner"><b>Demo:</b> a sample Sonor house with a sample project plan, so you can see every screen without a site. On site, use the Android app on the tablet or the Pi agent. Nothing here touches a real network.</div>'); refresh().then(() => useDemoPlan()); }
+  else if (mode === 'app') refresh();
+  else if (location.protocol === 'https:' || qs.has('agent')) { showConnect(); if (qs.get('agent')) $('#agentAddr').value = qs.get('agent'); $('#connectPanel .row').insertAdjacentHTML('beforeend', ' <a href="?demo=1">or try it with demo data</a>'); }
+  else refresh();
+  setInterval(() => { if (!document.hidden && agent && !agent.scan.running && mode === 'local') api('state').then((s) => { agent = s; if (s.scan.lastId && scanData && s.scan.lastId !== scanData.id) refresh(); }).catch(() => {}); }, 20000);
+}
+</script>
+</body>
+</html>
