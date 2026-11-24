@@ -13,6 +13,9 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400..700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <script src="./data/sonor-brand.js"></script>
 <script src="./data/sonor-header.js"></script>
+<script src="./data/sonor-app-auth.js"></script>
+<script src="./data/sonor-plan-image.js"></script>  <!-- the ONE Takeoffs plan loader (workspace master) -->
+<script src="./wifimap.js"></script>  <!-- Android app: signs in as the engineer (gateway v1.17.0) -->
 <style>
 :root, [data-theme] {
   --bg: var(--bg-0, #1C1C1E); --panel: var(--bg-1, #242426); --panel2: var(--bg-2, #2C2C2E); --line: var(--border-strong, rgba(255,255,255,.18));
@@ -103,6 +106,10 @@ canvas.graph { width: 100%; height: 110px; display: block; margin-top: 8px; back
 .wdbm { font: 500 34px var(--mono); min-width: 130px; } .wdbm small { font-size: 13px; color: var(--muted); }
 .wq { flex: 1; min-width: 0; } .wbar { height: 10px; background: var(--tabbar); border: 1px solid var(--edge); border-radius: 5px; overflow: hidden; margin-bottom: 6px; }
 .wbar > div { height: 100%; width: 0; background: var(--c, var(--muted)); transition: width .4s; }
+.wmgrid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 14px; margin-top: 10px; } @media (max-width: 900px) { .wmgrid { grid-template-columns: 1fr; } }
+.wmwrap { position: relative; border: 1px solid var(--edge); border-radius: 4px; overflow: hidden; min-height: 120px; } .wmwrap canvas { display: block; width: 100%; cursor: crosshair; touch-action: manipulation; } .wmwrap .empty { padding: 30px 16px; }
+.seg { display: inline-flex; border: 1px solid var(--edge); border-radius: 14px; overflow: hidden; } .seg button { border: 0; border-radius: 0; background: transparent; font-size: 10px; padding: 5px 9px; } .seg button + button { border-left: 1px solid var(--edge); } .seg button.on { background: var(--accent-c); color: #fff; }
+.wmcov { width: 100%; font-size: 12px; } .wmcov th { text-align: left; font-weight: 500; color: var(--muted); font-size: 10px; text-transform: uppercase; letter-spacing: .08em; } .wmcov td, .wmcov th { padding: 4px 4px; border-bottom: 1px solid var(--edge); }
 .wplan { position: relative; margin: 10px 0; border: 1px solid var(--edge); border-radius: 4px; overflow: hidden; background: #fff; }
 .wplan img { display: block; width: 100%; opacity: .85; } .wplan canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
 .wtip { position: absolute; left: 6px; bottom: 6px; background: rgba(0,0,0,.6); color: #ddd; padding: 2px 6px; border-radius: 3px; }
@@ -162,6 +169,7 @@ a { color: var(--accent-c); }
   <input id="label" placeholder="Scan label, e.g. 1394 first fix" style="width:200px" class="hide-sm">
   <button id="scanBtn" class="primary">Scan network</button>
   <select id="scanPick" title="Earlier scans on this agent"></select>
+  <button id="appSign" class="btn-sm" hidden title="Sign in with your Sonor email, the same login as apps.sonor.co.uk on the Mac"></button>
   <button id="uploadBtn" title="Send this scan to the office: it lands on the project whose Wi-Fi you are on">Upload</button>
   <div class="progress" id="prog" hidden><div></div></div>
   <span id="scanState" class="muted small" style="flex-basis:100%"></span>
@@ -221,11 +229,21 @@ a { color: var(--accent-c); }
         <canvas class="graph" id="wGraph" width="760" height="200"></canvas>
         <div class="row" style="margin-top:8px"><button id="wGo" class="primary">Start</button><span class="muted small" id="wRoam"></span></div>
       </div>
-      <div class="panel"><span class="lbl">Wi-Fi map · walk test</span>
-        <p class="muted small" style="margin:0 0 8px">Stand in each room, type its name and press <b>Record</b>. It takes 5 readings plus a ping to the router. Add a floor plan to drop each reading where you are standing.</p>
-        <div class="row"><input id="walkRoom" placeholder="Room, e.g. Kitchen" list="walkRooms" style="flex:1"><datalist id="walkRooms"></datalist><button id="walkGo" class="primary">Record</button></div>
-        <div class="row small" style="margin-top:8px;flex-wrap:wrap;gap:8px"><label class="btn-sm" style="cursor:pointer">Floor plan…<input type="file" id="walkPlan" accept="image/*" hidden></label><button class="btn-sm" id="walkCsv">CSV</button><button class="btn-sm" id="walkClear">Clear</button><span class="muted" id="walkSum"></span></div>
-        <div class="wplan" id="wPlan" hidden><img id="wPlanImg" alt="Floor plan"><canvas id="wHeat"></canvas><div class="muted small wtip" id="wPlanTip">Tap where you are standing, then Record.</div></div>
+      <div class="panel wide" id="wmPanel"><span class="lbl">Wi-Fi map · walk test</span>
+        <div class="banner" id="wmBanner" hidden></div>
+        <div class="row" style="flex-wrap:wrap;gap:8px"><select id="wmProj" style="flex:1;min-width:200px"><option value="">Project with a Takeoffs plan…</option></select><select id="wmFloor" hidden></select><button id="wmLoad">Load plan</button>
+          <label class="btn-sm" style="cursor:pointer" title="No Takeoffs plan yet: survey on a photo or PDF of any drawing. The office adds the real plan in Takeoffs.">Own plan…<input type="file" id="wmFile" accept="image/*,application/pdf" hidden></label><button class="btn-sm" id="wmBlank" title="Survey on a 1 m grid">Grid</button><span class="muted small" id="wmState"></span></div>
+        <div class="row wmbar" style="margin-top:8px;flex-wrap:wrap;gap:8px">
+          <div class="seg" id="wmTools"><button data-tool="stand">Stand here</button><button data-tool="add">Add AP</button><button data-tool="move">Move AP</button><button data-tool="remove">Remove AP</button><button data-tool="link" title="Stand under an AP and tap it: links the radio this tablet is on to that AP">Link AP</button><button data-tool="scale">Set scale</button></div>
+          <select id="wmModel" title="Model for Add AP"></select>
+          <div class="seg" id="wmHeat"><button data-heat="measured" class="on">Measured</button><button data-heat="predicted">Predicted</button><button data-heat="off">Off</button></div>
+        </div>
+        <div class="wmgrid">
+          <div><div class="wmwrap"><canvas id="wmCv"></canvas><div class="muted small wtip" id="wmTip"></div><div class="empty" id="wmEmpty">Pick the project and press <b>Load plan</b> to get its Takeoffs floor plan, rooms and access points. No plan yet? Use <b>Own plan</b> (a photo or PDF of any drawing) or <b>Grid</b>.</div></div>
+            <div class="row" style="margin-top:8px"><input id="walkRoom" placeholder="Room (taken from the plan when you tap it)" list="walkRooms" style="flex:1"><datalist id="walkRooms"></datalist><button id="walkGo" class="primary">Record</button></div>
+            <div class="row small" style="margin-top:8px;flex-wrap:wrap;gap:8px"><button class="btn-sm" id="walkCsv">CSV</button><button class="btn-sm" id="walkClear">Clear readings</button><span class="muted" id="walkSum"></span></div></div>
+          <div id="wmSide"></div>
+        </div>
         <div id="walkList"></div>
       </div>
       <div class="panel wide"><span class="lbl">Networks around · channel plan</span>
@@ -311,7 +329,7 @@ a { color: var(--accent-c); }
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.5.0';
 const HOSTED_URL = 'https://apps.sonor.co.uk/sonor-net-scanner/';
 if (window.SonorHeader) {
   SonorHeader.init({ appName: 'Network Scanner', repo: 'sonor-net-scanner' });
@@ -342,6 +360,7 @@ let mode = 'local';
 const IS_APP = !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform());
 const IS_DEMO = qs.has('demo');
 if (IS_APP) mode = 'app'; else if (IS_DEMO) mode = 'demo';
+const AUTH = window.SonorAppAuth ? SonorAppAuth.init({ app: 'net-scanner' }) : { active: false, headers: async () => ({}), user: () => null };   // tablet app: the engineer's own session
 let bridgeWin = null; let bridgeReady = null; const pending = new Map(); let seq = 0;
 
 async function localApi(action, data) {
@@ -436,8 +455,14 @@ if (IS_BRIDGE_WINDOW) {
 // ── Supabase (project plans). On apps.sonor.co.uk the gateway signs these calls in as the person. ──
 const SB_URL = 'https://ysmvklstkzodlocttspy.supabase.co';
 const SB_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InlzbXZrbHN0a3pvZGxvY3R0c3B5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM3Njc0OTMsImV4cCI6MjA4OTM0MzQ5M30.08kRS_dtbwz0rSYezNGMJHnOU_st8GKZseQPefcMEMc';
+// In the Android app the page runs from the tablet, so it carries the engineer's own session (sonor-app-auth.js); on the web the gateway does.
+async function sbHeaders() {
+  const h = { apikey: SB_ANON, Authorization: 'Bearer ' + SB_ANON };
+  if (AUTH.active) { const a = await AUTH.headers(); if (!a.Authorization) throw new Error('Sign in first: press Sign in at the top'); Object.assign(h, a); }
+  return h;
+}
 async function rest(path, opts = {}) {
-  const r = await fetch(SB_URL + '/rest/v1' + path, { ...opts, headers: { apikey: SB_ANON, Authorization: 'Bearer ' + SB_ANON, 'Content-Type': 'application/json', ...(opts.headers || {}) } });
+  const r = await fetch(SB_URL + '/rest/v1' + path, { ...opts, headers: { ...(await sbHeaders()), 'Content-Type': 'application/json', ...(opts.headers || {}) } });
   const t = await r.text(); const j = t ? JSON.parse(t) : null;
   if (!r.ok) throw new Error((j && (j.message || j.error)) || r.statusText);
   return j;
@@ -701,7 +726,7 @@ async function loadProjects() {
     loadHistory();
   } catch (e) {
     if (mode === 'demo') { $('#projState').textContent = 'Demo: using the sample plan.'; return useDemoPlan(); }
-    if (mode === 'app') { $('#projState').textContent = 'The project check needs a Sonor sign-in, which the tablet app does not have yet. Use it from apps.sonor.co.uk for now.'; return; }
+    if (mode === 'app') { $('#projState').textContent = AUTH.user() ? 'Could not reach Sonor: check the tablet is online.' : 'Press Sign in at the top (your Sonor email) to load project plans.'; return; }
     $('#projState').innerHTML = `Project plans need you signed in to Sonor apps. <a href="${HOSTED_URL}?agent=${encodeURIComponent(location.host)}" target="_blank">Open the scanner on apps.sonor.co.uk</a> and connect it to this agent.`;
   }
 }
@@ -815,10 +840,10 @@ async function uploadScan() {
         if (pick === null) throw new Error('cancelled');
         const n = Number(pick); if (n >= 1 && n <= list.length) { project = list[n - 1]; matched = 'picked'; }
       }
-    } catch (e) { if (e.message === 'cancelled') throw e; throw new Error('Uploading needs a Sonor sign-in: open the scanner from apps.sonor.co.uk'); }
+    } catch (e) { if (e.message === 'cancelled') throw e; throw new Error(mode === 'app' ? (AUTH.user() ? 'Could not reach Sonor: check the tablet is online' : 'Press Sign in at the top first') : 'Uploading needs a Sonor sign-in: open the scanner from apps.sonor.co.uk'); }
     const row = { project_id: project ? project.id : null, status: project ? 'pending' : 'unassigned', matched_by: matched, ssid: ssid || null, scanned_at: scanData.startedAt,
       agent: mode === 'app' ? 'tablet' : `agent:${(agent && agent.hostname) || ''}`, app_version: APP_VERSION, subnets: scanData.targets || [], device_count: scanData.devices.length,
-      label: scanData.label || null, netinfo: (info.at || survey || walk.length) ? { ...info, speed: info.speed || scanData.speed || null, wifiSurvey: survey ? { at: survey.at, networks: survey.networks.slice(0, 80), analysis: { counts: survey.analysis.counts, recommend: survey.analysis.recommend, flags: survey.analysis.flags } } : null, walk: walk.length ? walk : null } : null, devices: scanData.devices.map(compactDevice),
+      label: scanData.label || null, netinfo: (info.at || survey || walk.length || WifiMap.exportPlan()) ? { ...info, speed: info.speed || scanData.speed || null, wifiSurvey: survey ? { at: survey.at, networks: survey.networks.slice(0, 80), analysis: { counts: survey.analysis.counts, recommend: survey.analysis.recommend, flags: survey.analysis.flags } } : null, walk: walk.length ? walk : null, wifiPlan: WifiMap.exportPlan() } : null, devices: scanData.devices.map(compactDevice),
       check_result: plan && plan.projectId === (project && project.id) ? (() => { const c = compare(); return { ok: c.rows.filter((r) => r.status[0] === 'ok').length, warn: c.rows.filter((r) => r.status[0] === 'warn').length, missing: c.rows.filter((r) => r.status[0] === 'bad').length, extra: c.extra.length }; })() : null };
     await rest('/net_scans', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(row) });
     toast(project ? `Uploaded to ${project.name}${matched === 'ssid' ? ` (matched by Wi-Fi "${ssid}")` : ''}` : 'Uploaded. The office will attach it to a project.');
@@ -850,23 +875,35 @@ async function loadHistory() {
 async function openUpload(id) {
   try {
     const [r] = await rest(`/net_scans?id=eq.${id}&select=*`);
-    scanData = { id: 'upload-' + r.id, startedAt: r.scanned_at, seconds: 0, targets: r.subnets || [], devices: r.devices || [], label: r.label, netinfo: r.netinfo, notes: {} };
+    scanData = { id: 'upload-' + r.id, startedAt: r.scanned_at, seconds: 0, targets: r.subnets || [], gateways: r.netinfo && r.netinfo.gateway && r.netinfo.gateway.ip ? [r.netinfo.gateway.ip] : [], devices: r.devices || [], label: r.label, netinfo: r.netinfo, notes: {} };
     notes = {}; prevScan = null; review = { id: r.id, project_id: r.project_id, status: r.status };
     if (r.netinfo) { netInfo = r.netinfo; renderGlance(); }
     if (r.project_id) { $('#projPick').value = r.project_id; await loadPlan(); }
     render(); renderCheck();
+    reviewWalk = (r.netinfo && r.netinfo.walk) || null; renderWalk();
+    if (r.netinfo && r.netinfo.wifiPlan && await WifiMap.openReview(r)) toast('This upload has a Wi-Fi survey: see the Wi-Fi tab to approve its AP changes.');
     $('#scanState').textContent = `Reviewing an uploaded scan: ${r.scanned_by || ''} · ${fmtWhen(r.scanned_at)} · ${r.device_count} devices${r.ssid ? ' · Wi-Fi ' + r.ssid : ''}`;
     toast('Uploaded scan opened. Check it, fill MACs if wanted, then Mark reviewed.');
   } catch (e) { toast(e.message, true); }
 }
-async function markReviewed(summary) {
+async function markReviewed(summary, applied) {
   if (!review || review.status === 'applied') return;
   const note = prompt('Revision note for Network Map (who scanned and who reviewed are added for you):', summary || 'Checked against the plan.');
   if (note === null) return;
-  try { await rest('/rpc/net_scan_apply', { method: 'POST', body: JSON.stringify({ p_scan: review.id, p_applied: { summary: summary || null }, p_note: note, p_app_version: APP_VERSION }) }); review.status = 'applied'; toast('Reviewed: revision note added to Network Map'); loadHistory(); renderCheck(); }
+  try { await rest('/rpc/net_scan_apply', { method: 'POST', body: JSON.stringify({ p_scan: review.id, p_applied: { summary: summary || null, ...(applied || {}) }, p_note: note, p_app_version: APP_VERSION }) }); review.status = 'applied'; toast('Reviewed: revision note added to Network Map'); loadHistory(); renderCheck(); }
   catch (e) { toast(e.message, true); }
 }
 $('#uploadBtn').onclick = uploadScan;
+function renderSign() {
+  const b = $('#appSign'); if (!AUTH.active) return; const u = AUTH.user(); b.hidden = false;
+  b.textContent = u ? (u.email.split('@')[0] || 'Signed in') + ' · Sign out' : 'Sign in'; b.title = u ? `Signed in as ${u.email}. Scans and reviews are saved under this name.` : 'Sign in with your Sonor email, the same login as apps.sonor.co.uk on the Mac';
+  b.onclick = () => { if (!AUTH.user()) return AUTH.signIn(); if (confirm(`Sign ${u.email} out of this tablet?`)) { AUTH.signOut(); renderSign(); } };
+}
+if (AUTH.active) { renderSign(); AUTH.onChange(() => { renderSign(); const u = AUTH.user(); if (u) { toast('Signed in as ' + u.email); loadProjects(); reportVersion(); } }); }
+function reportVersion() { // the Hub reads app_versions for live versions (same upsert as sonor-platform.js)
+  if (mode === 'demo' || !(AUTH.active ? AUTH.user() : /(^|\.)sonor\.co\.uk$/.test(location.hostname))) return;
+  rest('/app_versions?on_conflict=app_key', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify({ app_key: 'net-scanner', version: APP_VERSION, app_name: 'Network Scanner', repo: 'sonor-net-scanner', last_seen: new Date().toISOString() }) }).catch(() => {});
+}
 
 // ── Demo plan (so the plan column, tooltips and Check tab can be tried) ──
 async function useDemoPlan() {
@@ -1089,10 +1126,10 @@ function drawMeter() {
 }
 
 // walk test: readings per room, optionally placed on a floor plan → a Wi-Fi map
-let walk = store.get('walk', []); let walkPos = null;
+let walk = store.get('walk', []); let reviewWalk = null; // reviewWalk: an uploaded scan's readings while the office reviews it
 const WALK_ROOMS = ['Kitchen', 'Living room', 'Dining room', 'Hall', 'Cinema', 'Office', 'Master bedroom', 'Bedroom 2', 'Bedroom 3', 'Garden', 'Garage', 'Gym', 'Landing'];
 async function walkRecord() {
-  const room = $('#walkRoom').value.trim(); if (!room) return toast('Type the room you are standing in', true);
+  const pos = WifiMap.pos(); const room = $('#walkRoom').value.trim() || (pos && pos.room) || ''; if (!room && !pos) return toast('Tap where you are on the plan, or type the room', true);
   const btn = $('#walkGo'); btn.disabled = true; btn.textContent = 'Reading…';
   try {
     const reads = []; let last = null;
@@ -1102,40 +1139,25 @@ async function walkRecord() {
     const pings = []; if (gw) for (let i = 0; i < 4; i++) { try { pings.push(await api('ping', { host: gw })); } catch { break; } }
     const ok = pings.filter((p) => p.ok).map((p) => p.ms);
     const avg = reads.length ? Math.round(reads.reduce((a, b) => a + b, 0) / reads.length) : null;
-    walk = walk.filter((w) => !(w.room.toLowerCase() === room.toLowerCase() && !walkPos && w.x == null));
-    walk.push({ room, at: new Date().toISOString(), signal: avg, min: reads.length ? Math.min(...reads) : null, max: reads.length ? Math.max(...reads) : null, ssid: last.ssid, bssid: last.bssid, vendor: last.vendor, channel: last.channel, band: last.band, rate: last.rate || (last.linkMbps ? last.linkMbps + ' Mb/s' : ''),
-      pingMs: ok.length ? +(ok.reduce((a, b) => a + b, 0) / ok.length).toFixed(1) : null, loss: pings.length ? Math.round(100 * (pings.length - ok.length) / pings.length) : null, x: walkPos ? walkPos.x : null, y: walkPos ? walkPos.y : null });
-    store.set('walk', walk); walkPos = null; $('#walkRoom').value = ''; renderWalk(); toast(`${room}: ${avg} dBm (${sigWord(avg)})`);
+    if (!pos) walk = walk.filter((w) => !(w.room.toLowerCase() === room.toLowerCase() && w.wx == null)); const ap = WifiMap.apFor(last.bssid);
+    walk.push({ room: room || 'Spot', at: new Date().toISOString(), signal: avg, min: reads.length ? Math.min(...reads) : null, max: reads.length ? Math.max(...reads) : null, ssid: last.ssid, bssid: last.bssid, vendor: last.vendor, channel: last.channel, band: last.band, rate: last.rate || (last.linkMbps ? last.linkMbps + ' Mb/s' : ''),
+      pingMs: ok.length ? +(ok.reduce((a, b) => a + b, 0) / ok.length).toFixed(1) : null, loss: pings.length ? Math.round(100 * (pings.length - ok.length) / pings.length) : null, floorId: pos ? pos.floorId : null, wx: pos ? +pos.x.toFixed(1) : null, wy: pos ? +pos.y.toFixed(1) : null, ap: ap ? ap.id : null });
+    store.set('walk', walk); WifiMap.clearPos(); $('#walkRoom').value = ''; renderWalk(); toast(`${room || 'Here'}: ${avg} dBm (${sigWord(avg)})${ap ? ' from ' + ap.id : ''}`);
   } catch (e) { toast(e.message, true); }
   btn.disabled = false; btn.textContent = 'Record';
 }
+const shownWalk = () => reviewWalk || walk;
 function renderWalk() {
-  $('#walkRooms').innerHTML = [...new Set([...walk.map((w) => w.room), ...WALK_ROOMS])].map((r) => `<option value="${esc(r)}">`).join('');
-  const aps = new Set(walk.map((w) => w.bssid).filter(Boolean)); const weak = walk.filter((w) => w.signal != null && w.signal < -72);
-  $('#walkSum').textContent = walk.length ? `${walk.length} reading${walk.length > 1 ? 's' : ''} · ${aps.size} access point${aps.size === 1 ? '' : 's'}${weak.length ? ` · ${weak.length} weak spot${weak.length > 1 ? 's' : ''}` : ''}` : '';
-  $('#walkList').innerHTML = walk.slice().sort((a, b) => (a.signal ?? -200) - (b.signal ?? -200)).map((w) => `<div class="wrow"><div><b>${esc(w.room)}</b> <span class="m">${w.x != null ? '📍 ' : ''}${esc(w.band || '')} ch ${esc(w.channel ?? '')} · ${esc(w.vendor || w.bssid || '')}${w.pingMs != null ? ` · router ${w.pingMs} ms` : ''}${w.loss ? ` · ${w.loss}% lost` : ''}</span></div><div><div class="sb"><div style="width:${sigPct(w.signal)}%;--c:${sigHex(w.signal)}"></div></div><span class="m">${w.signal ?? '—'} dBm · ${sigWord(w.signal)}</span></div><button class="btn-sm" data-wdel="${esc(w.at)}">✕</button></div>`).join('') || '<p class="muted small">No readings yet.</p>';
+  $('#walkRooms').innerHTML = [...new Set([...shownWalk().map((w) => w.room), ...WALK_ROOMS])].map((r) => `<option value="${esc(r)}">`).join('');
+  const aps = new Set(shownWalk().map((w) => w.bssid || w.ap).filter(Boolean)); const weak = shownWalk().filter((w) => w.signal != null && w.signal < -72);
+  $('#walkSum').textContent = shownWalk().length ? `${shownWalk().length} reading${shownWalk().length > 1 ? 's' : ''} · ${aps.size} access point${aps.size === 1 ? '' : 's'}${weak.length ? ` · ${weak.length} weak spot${weak.length > 1 ? 's' : ''}` : ''}` : '';
+  $('#walkList').innerHTML = shownWalk().slice().sort((a, b) => (a.signal ?? -200) - (b.signal ?? -200)).map((w) => `<div class="wrow"><div><b>${esc(w.room)}</b> <span class="m">${w.wx != null ? '📍 ' : ''}${w.ap ? esc(w.ap) + ' · ' : ''}${esc(w.band || '')} ch ${esc(w.channel ?? '')} · ${esc(w.vendor || w.bssid || '')}${w.pingMs != null ? ` · router ${w.pingMs} ms` : ''}${w.loss ? ` · ${w.loss}% lost` : ''}</span></div><div><div class="sb"><div style="width:${sigPct(w.signal)}%;--c:${sigHex(w.signal)}"></div></div><span class="m">${w.signal ?? '—'} dBm · ${sigWord(w.signal)}</span></div>${reviewWalk ? '<span></span>' : `<button class="btn-sm" data-wdel="${esc(w.at)}">✕</button>`}</div>`).join('') || '<p class="muted small">No readings yet.</p>';
   $('#walkList').querySelectorAll('[data-wdel]').forEach((b) => b.onclick = () => { walk = walk.filter((w) => w.at !== b.dataset.wdel); store.set('walk', walk); renderWalk(); });
-  drawHeat();
-}
-function drawHeat() {
-  const img = $('#wPlanImg'); const c = $('#wHeat'); if ($('#wPlan').hidden || !img.naturalWidth) return;
-  c.width = img.naturalWidth; c.height = img.naturalHeight; const g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height);
-  const R = Math.max(c.width, c.height) * 0.13; const pts = walk.filter((w) => w.x != null);
-  g.globalCompositeOperation = 'source-over';
-  for (const w of pts) { const x = w.x * c.width; const y = w.y * c.height; const grd = g.createRadialGradient(x, y, 0, x, y, R); const col = sigHex(w.signal); grd.addColorStop(0, col + 'aa'); grd.addColorStop(1, col + '00'); g.fillStyle = grd; g.beginPath(); g.arc(x, y, R, 0, Math.PI * 2); g.fill(); }
-  const fs = Math.max(14, c.width / 70); g.font = `600 ${fs}px DM Sans, sans-serif`; g.textAlign = 'center';
-  for (const w of pts) { const x = w.x * c.width; const y = w.y * c.height; g.fillStyle = sigHex(w.signal); g.strokeStyle = '#000'; g.lineWidth = fs / 6; g.beginPath(); g.arc(x, y, fs / 2.2, 0, Math.PI * 2); g.fill(); g.stroke(); const t = `${w.room} ${w.signal ?? ''}`; g.lineWidth = fs / 4; g.strokeStyle = 'rgba(0,0,0,.75)'; g.strokeText(t, x, y - fs); g.fillStyle = '#fff'; g.fillText(t, x, y - fs); }
-  if (walkPos) { const x = walkPos.x * c.width; const y = walkPos.y * c.height; g.strokeStyle = '#4bb9d3'; g.lineWidth = fs / 4; g.beginPath(); g.arc(x, y, fs, 0, Math.PI * 2); g.stroke(); }
-}
-function loadPlanImage(src) { const img = $('#wPlanImg'); img.onload = () => { $('#wPlan').hidden = false; drawHeat(); }; img.src = src; }
-function walkPlanFile(f) {
-  if (!f) return; const r = new FileReader();
-  r.onload = () => { const im = new Image(); im.onload = () => { const k = Math.min(1, 1600 / Math.max(im.width, im.height)); const cv = document.createElement('canvas'); cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k); cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height); const url = cv.toDataURL('image/jpeg', 0.8); store.set('walkPlan', url); loadPlanImage(url); }; im.src = r.result; };
-  r.readAsDataURL(f);
+  WifiMap.draw();
 }
 function walkCsv() {
-  if (!walk.length) return toast('No readings yet', true);
-  const rows = [['Room', 'Signal dBm', 'Min', 'Max', 'Quality', 'Wi-Fi', 'AP', 'AP maker', 'Band', 'Channel', 'Router ping ms', 'Loss %', 'Time']].concat(walk.map((w) => [w.room, w.signal, w.min, w.max, sigWord(w.signal), w.ssid, w.bssid, w.vendor, w.band, w.channel, w.pingMs, w.loss, w.at]));
+  if (!shownWalk().length) return toast('No readings yet', true);
+  const rows = [['Room', 'AP', 'Signal dBm', 'Min', 'Max', 'Quality', 'Wi-Fi', 'AP', 'AP maker', 'Band', 'Channel', 'Router ping ms', 'Loss %', 'Time']].concat(shownWalk().map((w) => [w.room, w.ap, w.signal, w.min, w.max, sigWord(w.signal), w.ssid, w.bssid, w.vendor, w.band, w.channel, w.pingMs, w.loss, w.at]));
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([rows.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')], { type: 'text/csv' })); a.download = `wifi-walk-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
 }
 
@@ -1196,7 +1218,7 @@ function renderSchedule() {
   const list = scanData.devices.filter((d) => $('#schClients').checked || !isClient(d)).filter((d) => !d.isSelf);
   const showPorts = $('#schPorts').checked;
   let h = `<h1>Network IP schedule${plan ? ' · ' + esc(plan.name) : (scanData.label ? ' · ' + esc(scanData.label) : '')}</h1>
-    <div class="sub">As found by Sonor Network Scanner · ${esc(new Date(scanData.startedAt).toLocaleString('en-GB'))} · ${esc(scanData.targets.join(', '))} · ${list.length} devices${scanData.gateways.length ? ' · gateway ' + esc(scanData.gateways.join(', ')) : ''}</div>
+    <div class="sub">As found by Sonor Network Scanner · ${esc(new Date(scanData.startedAt).toLocaleString('en-GB'))} · ${esc(scanData.targets.join(', '))} · ${list.length} devices${(scanData.gateways || []).length ? ' · gateway ' + esc(scanData.gateways.join(', ')) : ''}</div>
     <table><thead><tr><th>IP</th><th>Addr.</th><th>Name</th><th>Make / model</th><th>Type</th><th>MAC</th><th>Firmware</th><th>Serial</th>${showPorts ? '<th>Ports</th>' : ''}<th>Notes</th></tr></thead><tbody>`;
   for (const [k, l] of SERVICES) {
     const g = list.filter((d) => d.service === k).sort((a, b) => ipNum(a.ip) - ipNum(b.ip)); if (!g.length) continue;
@@ -1232,11 +1254,14 @@ $('#dnsGo').onclick = (e) => runTool(e.target, '#dnsOut', async () => { const r 
 $('#wolGo').onclick = (e) => runTool(e.target, '#wolOut', async () => { const r = await api('wol', { mac: $('#wolMac').value.trim() }); return `Magic packet for ${r.mac} sent to ${r.sentTo.join(', ')}`; });
 $('#wGo').onclick = () => (wTimer ? wStop() : wStart());
 $('#walkGo').onclick = walkRecord; $('#walkRoom').addEventListener('keydown', (e) => { if (e.key === 'Enter') walkRecord(); });
-$('#walkPlan').onchange = (e) => walkPlanFile(e.target.files[0]); $('#walkCsv').onclick = walkCsv;
-$('#walkClear').onclick = () => { if (!walk.length && $('#wPlan').hidden) return; if (!confirm('Clear all readings and the floor plan?')) return; walk = []; store.set('walk', walk); store.set('walkPlan', null); $('#wPlan').hidden = true; renderWalk(); };
-$('#wHeat').onclick = (e) => { const r = e.target.getBoundingClientRect(); walkPos = { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }; drawHeat(); $('#walkRoom').focus(); };
+$('#walkCsv').onclick = walkCsv;
+$('#walkClear').onclick = () => { if (!walk.length || reviewWalk) return; if (!confirm(`Clear all ${walk.length} readings?`)) return; walk = []; store.set('walk', walk); renderWalk(); };
 $('#survGo').onclick = runSurvey; $('#survMine').onchange = renderSurvey; $('#survQ').oninput = renderSurvey;
-{ const pl = store.get('walkPlan', null); if (pl) loadPlanImage(pl); renderWalk(); drawMeter(); }
+WifiMap.init({ $, esc, toast, rest, sbHeaders, sbUrl: SB_URL, api, loadScript, sigHex, mode: () => mode, getPlan: () => plan,
+  getWalk: shownWalk, setWalk: (w) => { walk = w; store.set('walk', walk); renderWalk(); }, currentProject: () => $('#projPick').value || qs.get('pid') || (() => { try { return localStorage.getItem('sonor_active_project_id') || ''; } catch { return ''; } })() || store.get('project', ''),
+  who: () => (AUTH.user() || {}).email || (window.SonorAccess && SonorAccess.user && SonorAccess.user.email) || '', markReviewed: (summary, applied) => markReviewed(summary, applied),
+  endReview: () => { reviewWalk = null; renderWalk(); } });
+renderWalk(); drawMeter();
 $('#calcIn').oninput = () => { $('#calcOut').textContent = subnetCalc($('#calcIn').value || ($('#calcIn').placeholder.split(' ')[0])); };
 $('#calcOut').textContent = subnetCalc('192.168.20.0/22');
 $('#dhcpPool').value = store.get('dhcpPool', ''); $('#svcTint').checked = store.get('svcTint', true); document.body.classList.toggle('svc-tint', $('#svcTint').checked); $('#fillMacs').onclick = fillMacs; $('#markRev').onclick = () => markReviewed('');
@@ -1247,9 +1272,10 @@ $('#targets').value = store.get('targets', ''); $('#groupBy').value = store.get(
 
 if (!IS_BRIDGE_WINDOW) {
   if (mode === 'demo') { $('#tab-devices').insertAdjacentHTML('afterbegin', '<div class="banner"><b>Demo:</b> a sample Sonor house with a sample project plan, so you can see every screen without a site. On site, use the Android app on the tablet or the Pi agent. Nothing here touches a real network.</div>'); refresh().then(() => useDemoPlan()); }
-  else if (mode === 'app') refresh();
+  else if (mode === 'app') { refresh(); reportVersion(); }
   else if (location.protocol === 'https:' || qs.has('agent')) { showConnect(); if (qs.get('agent')) $('#agentAddr').value = qs.get('agent'); $('#connectPanel .row').insertAdjacentHTML('beforeend', ' <a href="?demo=1">or try it with demo data</a>'); }
   else refresh();
+  if (mode !== 'app') reportVersion();
   setInterval(() => { if (!document.hidden && agent && !agent.scan.running && mode === 'local') api('state').then((s) => { agent = s; if (s.scan.lastId && scanData && s.scan.lastId !== scanData.id) refresh(); }).catch(() => {}); }, 20000);
 }
 </script>

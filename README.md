@@ -1,4 +1,4 @@
-# Sonor Network Scanner · v1.4.0
+# Sonor Network Scanner · v1.5.0
 
 A commissioning scanner for AV / Control4 sites. It finds every device on the network and says what it is in AV terms (make, model, firmware, serial where the device publishes it), checks the site against the project's plan in the Network Map app, and prints an as-found IP schedule.
 
@@ -71,6 +71,26 @@ Not done yet: hosting the page at apps.sonor.co.uk (needs the `sonorltd/sonor-ne
 - **Check against project** shows the project's uploaded scans (one master table, filtered per project) and the office's Unassigned
   list (attach to a project). **Review** opens an uploaded scan here; Fill MACs / Mark reviewed calls `net_scan_apply`, which writes
   the revision note into Network Map's history (`sonor_revisions`, app `network-map`: who scanned, who reviewed, what changed).
+
+## v1.5.0 (2026-11-24): Wi-Fi map on the Takeoffs plan, tablet sign-in
+
+- **Wi-Fi map** (Wi-Fi tab): pick the project and Load plan. It shows the Takeoffs floor (active plan image through the shared
+  `sonor-plan-image.js`, rooms from `content.areas`, building outline, and every WAP / AP symbol) at Takeoffs coordinates.
+  Tap where you stand, Record: the room comes from the room polygon and the reading is pinned to the plan. Heat is
+  **Measured** (between readings, clipped to the building) or **Predicted** (log-distance from the APs, about 5 dB a wall,
+  calibrated from readings next to linked APs). The side panel scores every room against −67 dBm.
+- **AP proposals**: Add / Move / Remove AP on the plan, or "+ AP" on a weak room. Link AP ties the radio the tablet is on to a
+  plan AP (Network Map MACs are matched too). Proposals, links and readings go up with the scan (`netinfo.wifiPlan`, no schema change).
+- **Office approval**: Review an uploaded scan, tick the changes, *Apply ticked changes to Takeoffs*. That floor is updated only if
+  its `version` has not moved since (the compare-and-swap Takeoffs itself uses), the new APs get Takeoffs-style ids
+  (`ROOM-WAP-01`), and the scan's revision note records who surveyed, who approved and what changed. Network Map picks the APs up
+  on its next Takeoffs sync. Nothing is written to Takeoffs from the tablet.
+- **No Takeoffs plan yet**: Own plan (photo or PDF, with Set scale) or Grid. Those proposals go to the office for drawing in Takeoffs;
+  plans themselves are only ever added in Takeoffs on the Mac.
+- **Tablet sign-in**: the Android app signs in as the engineer (gateway `/__sonor/app-login`, `data/sonor-app-auth.js`), so project
+  plans, uploads and reviews carry the person's own session, exactly like the web.
+- Fixed: opening an uploaded scan for review crashed on scans without a gateway list.
+- Tests: `test/wifimap.test.js` (rooms, mask, prediction, calibration, BSSID match, Takeoffs apply).
 
 ## v1.4.0 (2026-11-24): Wi-Fi tab
 - **Signal here**: live signal of this device's own Wi-Fi (dBm, quality, access point and its maker, channel, rate) with a graph, and a note when it roams to another AP.
