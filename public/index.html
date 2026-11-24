@@ -350,7 +350,7 @@ a { color: var(--accent-c); }
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = '1.6.1';
+const APP_VERSION = '1.6.3';
 const HOSTED_URL = 'https://apps.sonor.co.uk/sonor-net-scanner/';
 if (window.SonorHeader) {
   SonorHeader.init({ appName: 'Network Scanner', repo: 'sonor-net-scanner' });
@@ -1228,11 +1228,12 @@ async function runSurvey() {
 const ZB = Array.from({ length: 16 }, (_, i) => i + 11);
 const zbFreq = (k) => 2405 + 5 * (k - 11);
 const wifiFreq24 = (c) => (c === 14 ? 2484 : 2407 + 5 * c);
-function zigbeeLoad(nets) {   // per Zigbee channel: summed Wi-Fi power overlapping it (dBm) and who it is
-  return ZB.map((k) => { const f = zbFreq(k); let mw = 0; const who = [];
-    for (const n of nets) { if (n.band !== '2.4 GHz' || n.signal == null) continue; const half = (n.width || 20) >= 40 ? 20 : 10; const cf = wifiFreq24(n.channel) + ((n.width || 20) >= 40 ? 10 : 0);
-      if (Math.abs(f - cf) <= half + 1) { mw += Math.pow(10, n.signal / 10); who.push(n); } }
-    return { ch: k, freq: f, dbm: mw ? Math.round(10 * Math.log10(mw)) : null, who: who.sort((a, b) => b.signal - a.signal) }; });
+const rfW = (rssi) => (rssi == null || rssi < -90 ? 0 : Math.pow(10, (rssi + 95) / 10));   // wifi.score.algorithm weight
+function zigbeeLoad(nets) {   // per Zigbee channel: Wi-Fi spans covering its centre ±1 MHz (zb.overlap.math, zb.pick.algorithm)
+  return ZB.map((k) => { const f = zbFreq(k); let mw = 0, score = 0; const who = [];
+    for (const n of nets) { if (n.band !== '2.4 GHz' || n.signal == null) continue; const w = n.width || 20; const cf = n.centerFreq || (wifiFreq24(n.channel) + (w >= 40 ? 10 : 0)); const half = w / 2 + 1;
+      if (Math.abs(f - cf) < half + 1) { mw += Math.pow(10, n.signal / 10); score += rfW(n.signal); who.push(n); } }
+    return { ch: k, freq: f, dbm: mw ? Math.round(10 * Math.log10(mw)) : null, score, who: who.sort((a, b) => b.signal - a.signal) }; });
 }
 const zbHex = (d) => (d == null ? '#2fbf71' : d < -80 ? '#7cc95a' : d < -70 ? '#e3a72f' : d < -60 ? '#e5784d' : '#e5484d');
 function drawZigbee(canvas, load, cur) {
@@ -1251,6 +1252,7 @@ function drawChannels(canvas, list, band, mine) {
   g.font = '17px DM Mono, monospace'; g.textAlign = 'center'; g.fillStyle = '#8E8E93';
   for (const c of label) { const x = xs(c); g.fillText(c, x, H - 8); g.strokeStyle = band === '2.4 GHz' && [1, 6, 11].includes(c) ? 'rgba(255,255,255,.16)' : 'rgba(255,255,255,.05)'; g.beginPath(); g.moveTo(x, top); g.lineTo(x, H - bot); g.stroke(); }
   if (band !== '2.4 GHz') { g.fillStyle = 'rgba(227,167,47,.06)'; const a = xs(52) - W / (CH5.length + 1) / 2; const b2 = xs(144 > 140 ? 140 : 144) + W / (CH5.length + 1) / 2; g.fillRect(a, top, b2 - a, H - top - bot); g.fillStyle = '#e3a72f99'; g.fillText('DFS (radar: can move channel)', (a + b2) / 2, top - 6); }
+  for (const [d, c, t] of [[-67, 'rgba(47,191,113,.35)', '-67 AV minimum'], [-82, 'rgba(227,167,47,.35)', '-82 contention']]) { g.strokeStyle = c; g.setLineDash([4, 6]); g.beginPath(); g.moveTo(0, y(d)); g.lineTo(W, y(d)); g.stroke(); g.setLineDash([]); g.fillStyle = c.replace('.35', '.9'); g.textAlign = 'right'; g.font = '13px DM Mono, monospace'; g.fillText(t, W - 6, y(d) - 4); g.textAlign = 'center'; }
   const sorted = list.slice().sort((a, b) => (a.signal ?? -200) - (b.signal ?? -200));
   for (const n of sorted) {
     const ours = mine.has(n.ssid); const col = ours ? '#4bb9d3' : n.security === 'Open' ? '#e5784d' : '#98989D';
@@ -1279,13 +1281,15 @@ function renderSurvey() {
   drawChannels($('#ch24'), nets.filter((n) => n.band === '2.4 GHz'), '2.4 GHz', mine);
   drawChannels($('#ch5'), nets.filter((n) => n.band === '5 GHz'), '5 GHz', mine);
   const zl = zigbeeLoad(survey.networks); const cur = Number($('#zbCh').value) || null; drawZigbee($('#ch24'), zl, cur);
-  const ranked = zl.slice().sort((a, b) => (a.dbm ?? -120) - (b.dbm ?? -120)); const zbBest = ranked.slice(0, 3); const C = cur && zl.find((z) => z.ch === cur);
+  const C4P = zl.filter((z) => [15, 20, 25].includes(z.ch)).sort((a, b) => a.score - b.score || [15, 20, 25].indexOf(a.ch) - [15, 20, 25].indexOf(b.ch)); const zbBest = C4P; const C = cur && zl.find((z) => z.ch === cur);
+  const w1213 = survey.networks.filter((n) => n.band === '2.4 GHz' && n.channel >= 12);
+  const why = (z) => (z.who.length ? `Wi-Fi on it: ${z.who.slice(0, 2).map((n) => `${esc(n.ssid || 'hidden')} ch ${n.channel} ${n.signal} dBm`).join(', ')}` : 'no Wi-Fi above -90 dBm overlaps it');
   const zt = (z) => `ch ${z.ch} <span class="muted">${z.freq} MHz</span>`;
   $('#zbRec').innerHTML = [
-    tile('ok', 'Zigbee / Thread · clearest channels', zbBest.map((z) => z.ch).join(' · '), zbBest.map((z) => `${zt(z)}: ${z.dbm == null ? 'no Wi-Fi heard on it' : 'Wi-Fi ' + z.dbm + ' dBm'}`).join('<br>')),
-    C ? tile(C.dbm == null || C.dbm < -80 ? 'ok' : C.dbm < -70 ? 'warn' : 'bad', `Site Zigbee · ch ${C.ch}`, C.dbm == null ? 'Clear' : `${C.dbm} dBm`, C.who.length ? 'Overlapped by ' + C.who.slice(0, 3).map((n) => `${esc(n.ssid || 'hidden')} (ch ${n.channel}, ${n.signal} dBm)`).join(', ') + (C.dbm >= -70 ? `. Move Zigbee to ch ${zbBest[0].ch} or the Wi-Fi off it.` : '') : 'No Wi-Fi heard over it here.')
+    tile('ok', 'Control4 Zigbee · best of 15 / 20 / 25', `ch ${zbBest[0].ch}`, `${zbBest.map((z) => `<b>${z.ch}</b>: ${why(z)}`).join('<br>')}${w1213.length ? `<br><span style="color:var(--warn)">Wi-Fi on 12/13 here (${w1213.map((n) => esc(n.ssid || 'hidden')).slice(0, 2).join(', ')}) spoils 25.</span>` : ''}<br><span class="muted">Control4 picks its channel once when the mesh is made and never re-checks, so check at handover and on service visits.</span>`),
+    C ? tile(C.score < 1 ? 'ok' : C.dbm < -75 ? 'warn' : 'bad', `Site Zigbee · ch ${C.ch}`, C.dbm == null ? 'Clear' : `${C.dbm} dBm`, (C.who.length ? why(C) + (C.ch !== zbBest[0].ch && C.score > zbBest[0].score * 2 + 1 ? `. Better: Zigbee ${zbBest[0].ch}.` : '') : 'No Wi-Fi heard over it here.') + ([15, 20, 25].includes(C.ch) ? '' : ' Control4 recommends 15, 20 or 25.'))
       : tile('', 'Site Zigbee channel', '—', 'Type the Control4 Zigbee channel (Composer › Network › Zigbee) to check it against the Wi-Fi here.'),
-    tile('', 'Not visible to Wi-Fi', 'BT · microwave', 'These and the Zigbee mesh itself need an 802.15.4 / spectrum radio to measure: an ESP32-C6 energy scan (Engineer Toolkit) plugs in here.'),
+    tile('', 'Also check', 'AP ≥ 5 m', 'Every AP or router at least 5 m from the Control4 mesh controller (a near AP blocks Zigbee even on another channel); never a mesh controller in the rack or on Wi-Fi. Bluetooth, microwaves (Zigbee 19–21) and the mesh itself need an ESP32-C6 energy scan to measure.'),
   ].join('');
   const secCls = (s) => (/WEP|TKIP|old/.test(s) ? 'color:var(--bad)' : s === 'Open' ? 'color:var(--warn)' : '');
   $('#survTable').innerHTML = `<thead><tr><th>Network</th><th>Signal</th><th>Band</th><th>Ch</th><th>Width</th><th>Security</th><th>AP maker</th><th>AP (BSSID)</th></tr></thead><tbody>` + nets.map((n) => `<tr${mine.has(n.ssid) ? ' style="background:rgba(75,185,211,.08)"' : ''}><td>${n.inUse ? '● ' : ''}${mine.has(n.ssid) ? '<b>' : ''}${esc(n.ssid || '(hidden)')}${mine.has(n.ssid) ? '</b>' : ''}</td><td style="white-space:nowrap"><span style="display:inline-block;width:60px;height:7px;border-radius:4px;background:var(--tabbar);vertical-align:middle;overflow:hidden"><span style="display:block;height:100%;width:${sigPct(n.signal)}%;background:${sigHex(n.signal)}"></span></span> <span class="mono">${n.signal ?? '—'}</span></td><td>${esc(n.band)}</td><td class="mono">${n.channel ?? ''}</td><td class="mono">${n.width ? n.width + ' MHz' : ''}</td><td style="${secCls(n.security)}">${esc(n.security)}</td><td>${esc(n.vendor)}</td><td class="mono">${esc(n.bssid)}</td></tr>`).join('') + '</tbody>';
@@ -1296,21 +1300,24 @@ function renderSurvey() {
 // ── RF tab (v1.6.1): RF bridges the scan found + the Sonor RF probe (ESP32 + CC1101, rf-probe/) ──
 // Guidance below is a first cut: the researched rules (rf-rules.json from the research thread) replace RF_GUIDE / RF_LEVELS.
 const RF_GUIDE = [
-  { test: (d) => /bond/i.test(d.make), band: '300–450 MHz RF (learns the existing remotes) · Wi-Fi to the LAN', tips: ['Central and high, in line of sight of as many motors / fans as it can: RF does not like metal, foil-backed insulation or concrete.', 'One bridge per area it reliably reaches: test each motor with the RF probe at the motor before signing off.', 'Give it a DHCP reservation; Control4 drives it over the Bond local API.'] },
-  { test: (d) => /somfy/i.test(d.make), band: 'RTS 433.42 MHz (one-way) and io-homecontrol 868 MHz (two-way)', tips: ['RTS is one-way: Control4 never hears if the blind moved, so test every motor from where the transmitter will live.', 'Keep it away from the rack metalwork and other 433 MHz kit; out of the rack if possible.', 'Give it a DHCP reservation.'] },
-  { test: (d) => /lutron/i.test(d.make), band: 'Clear Connect 434 MHz (RA2 / Caséta) or Clear Connect Type X (RA3, 2.4 GHz Thread-like)', tips: ['Every dimmer and keypad within range of the processor or a repeater: check the signal report in the Lutron app after programming.', 'Processors out of metal racks; repeaters on the line of sight between floors.'] },
+  { test: (d) => /bond/i.test(d.make), band: '300–450 MHz RF (learns the existing remotes) · Wi-Fi to the LAN', tips: ['Central and high, out of racks and metal boxes, in line of sight of as many motors as practical.', 'One Bond covers a typical floor; add a second per floor where the probe shows marginal results.', 'Give it a DHCP reservation; Control4 drives it over the Bond local API.'] },
+  { test: (d) => /somfy/i.test(d.make), band: 'RTS 433.42 MHz (one-way) and io-homecontrol 868 MHz (two-way)', tips: ['RTS reaches about 20 m with no more than two internal walls (Somfy quotes 65 ft).', 'RTS is one-way: a missed command looks like a stuck blind, so probe-test every motor from where the transmitter will live; failures need it moved or an extra transmitter.', 'Local API (port 8443) only after Developer Mode is turned on in the Somfy account.'] },
+  { test: (d) => /lutron/i.test(d.make), band: 'Clear Connect Type A (UK/EU 868 MHz, US 434 MHz) or Type X (RA3, 2.4 GHz 802.15.4)', tips: ['Every device within 9 m of the processor or a repeater; repeaters within 18 m of each other (Lutron).', 'Never in a metal enclosure or rack.', 'UK systems are 868 MHz: a 433 MHz probe will not measure them; read the frequency on the model label.'] },
   { test: (d) => /hue/i.test(d.make) || /hue bridge/i.test(d.kind), band: 'Zigbee 2.4 GHz (channel 11, 15, 20 or 25)', tips: ['Pick the Hue Zigbee channel away from the busiest Wi-Fi (Wi-Fi tab shows the clearest Zigbee channels here).', 'Mains-powered bulbs and plugs repeat: keep some always powered.'] },
-  { test: (d) => /control4/i.test(d.make) && /controller|director|core|ea-|ca-/i.test(`${d.kind} ${d.model}`), band: 'Zigbee 2.4 GHz mesh (Control4 lighting, keypads, remotes)', tips: ['Check the Zigbee channel against the Wi-Fi on the Wi-Fi tab; the controller\'s Zigbee antenna outside the rack.', 'Composer › Network › Zigbee shows the mesh: every device should have a strong route.'] },
+  { test: (d) => /control4/i.test(d.make) && /controller|director|core|ea-|ca-/i.test(`${d.kind} ${d.model}`), band: 'Zigbee 2.4 GHz mesh (Control4 lighting, keypads, remotes)', tips: ['Zigbee on 15, 20 or 25, picked against the Wi-Fi tab; never left on the default.', 'Mesh controller never in the rack (secondary controller centrally, or the C4-AK-3M antenna kit) and never on Wi-Fi; every AP at least 5 m away.', 'Max 70 nodes per mesh; 5–9 m between Zigbee devices.'] },
+  { test: (d) => /heatmiser/i.test(d.make) || /neohub/i.test(d.kind), band: 'Zigbee 2.4 GHz (Heatmiser neo mesh: neoStat, neoAir, neoPlug)', tips: ['Its own Zigbee mesh, separate from Control4 and Hue: check which Zigbee channel the neoHub is on and keep it off the Control4 and Hue channels and away from the busiest Wi-Fi (Wi-Fi tab).', 'neoHub wired to the LAN, central and out of the rack; mains neoStats repeat, battery neoAir / neoStat-e do not, so plan a mains neoStat or neoPlug between the hub and far battery stats.', 'Control4 drives it over the neoHub local API (port 4242 legacy, 4243 websocket); give it a DHCP reservation.', 'Draft: Heatmiser ranges are not researched yet.'] },
   { test: (d) => /shelly/i.test(d.make), band: 'Wi-Fi 2.4 GHz', tips: ['Shelly relays sit in back boxes: check Wi-Fi at the box with the walk test before plastering.'] },
 ];
-const RF_LEVELS = { good: 20, ok: 10 };   // dB above the noise floor at the spot (first guide; research replaces)
-const rfVerdict = (m) => (m == null ? ['—', ''] : m >= RF_LEVELS.good ? ['Solid', 'ok'] : m >= RF_LEVELS.ok ? ['Marginal', 'warn'] : ['Too weak', 'bad']);
+// rf.probe.grades (research 2026-11-24, heuristic: calibrate on the first unit): graded on the worse of level and margin
+const RF_LEVELS = { solid: { dbm: -80, margin: 20 }, marginal: { dbm: -95, margin: 10 } };
+const rfVerdict = (m, peak) => { if (m == null) return ['—', '']; const p = peak == null ? 0 : peak; if (p >= RF_LEVELS.solid.dbm && m >= RF_LEVELS.solid.margin) return ['Solid', 'ok']; if (p >= RF_LEVELS.marginal.dbm && m >= RF_LEVELS.marginal.margin) return ['Marginal', 'warn']; return ['Fail', 'bad']; };
 let rfLog = store.get('rfLog', []); let rfTimer = null; let rfHist = []; let rfLast = null; let rfTesting = null;
 function rfStop() { clearInterval(rfTimer); rfTimer = null; }
 function renderRf() {
   const devs = (scanData && scanData.devices) || []; const br = []; for (const d of devs) { const g = RF_GUIDE.find((x) => x.test(d)); if (g) br.push([d, g]); }
-  $('#rfBridges').innerHTML = br.length ? br.map(([d, g]) => `<div class="gcard"><div class="lbl">${esc(d.make || '')} · ${esc(d.kind || '')}</div><div class="big" style="font-size:18px">${esc(nameOf(d) || d.model || d.ip)}</div><div class="ln"><span class="mono">${esc(d.ip)}</span> ${ipLink(d)}${d.mac ? ' · ' + esc(d.mac) : ''}${d.firmware ? ' · fw ' + esc(d.firmware) : ''}<br><b>${esc(g.band)}</b><ul class="rfl">${g.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></div></div>`).join('')
-    : `<p class="muted small">${devs.length ? 'No Bond, Somfy, Lutron, Hue, Control4 or Shelly hubs in this scan.' : 'No scan yet: run one on the Devices tab.'}</p>`;
+  const zbNote = '<p class="muted small">Zigbee nodes are not on the LAN, so a scan cannot list them: Control4 keypads, dimmers and remotes, Heatmiser neoStats and neoAirs, Hue bulbs. They will come from the Takeoffs wireless plan once that module is built; until then test them on site with the Zigbee view on the Wi-Fi tab.</p>';
+  $('#rfBridges').innerHTML = (br.length ? br.map(([d, g]) => `<div class="gcard"><div class="lbl">${esc(d.make || '')} · ${esc(d.kind || '')}</div><div class="big" style="font-size:18px">${esc(nameOf(d) || d.model || d.ip)}</div><div class="ln"><span class="mono">${esc(d.ip)}</span> ${ipLink(d)}${d.mac ? ' · ' + esc(d.mac) : ''}${d.firmware ? ' · fw ' + esc(d.firmware) : ''}<br><b>${esc(g.band)}</b><ul class="rfl">${g.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></div></div>`).join('')
+    : `<p class="muted small">${devs.length ? 'No Bond, Somfy, Lutron, Hue, Control4, Heatmiser or Shelly hubs in this scan.' : 'No scan yet: run one on the Devices tab.'}</p>`) + zbNote;
   const probes = devs.filter((d) => /RF probe/i.test(d.kind));
   $('#rfProbeSel').innerHTML = probes.map((d) => `<option value="${esc(d.ip)}">${esc(nameOf(d) || 'RF probe')} · ${esc(d.ip)}</option>`).join('') + '<option value="">Type the IP…</option>';
   $('#rfIp').hidden = !!$('#rfProbeSel').value; renderRfLog();
@@ -1333,9 +1340,9 @@ function drawRf() {
   g.strokeStyle = '#4bb9d3'; g.lineWidth = 2; g.beginPath(); rfHist.forEach((h, i) => { const X = x(i + off); i ? g.lineTo(X, y(h.peak)) : g.moveTo(X, y(h.peak)); }); g.stroke(); g.lineWidth = 1;
 }
 function renderRfLog() {
-  $('#rfLog').innerHTML = rfLog.length ? `<thead><tr><th>Where</th><th>MHz</th><th>Peak</th><th>Floor</th><th>Margin</th><th>Verdict</th><th>When</th><th></th></tr></thead><tbody>${rfLog.map((r, i) => { const [w, c] = rfVerdict(r.margin); return `<tr><td>${esc(r.spot)}</td><td class="mono">${r.mhz}</td><td class="mono">${r.peak} dBm</td><td class="mono">${r.floor} dBm</td><td class="mono"><b>${r.margin} dB</b></td><td><span class="pill ${c}">${w}</span></td><td class="small muted">${new Date(r.at).toLocaleString()}</td><td><button class="btn-sm" data-rfdel="${i}">✕</button></td></tr>`; }).join('')}</tbody>` : '';
+  $('#rfLog').innerHTML = rfLog.length ? `<thead><tr><th>Where</th><th>MHz</th><th>Peak</th><th>Floor</th><th>Margin</th><th>Verdict</th><th>When</th><th></th></tr></thead><tbody>${rfLog.map((r, i) => { const [w, c] = rfVerdict(r.margin, r.peak); return `<tr><td>${esc(r.spot)}</td><td class="mono">${r.mhz}</td><td class="mono">${r.peak} dBm</td><td class="mono">${r.floor} dBm</td><td class="mono"><b>${r.margin} dB</b></td><td><span class="pill ${c}">${w}</span></td><td class="small muted">${new Date(r.at).toLocaleString()}</td><td><button class="btn-sm" data-rfdel="${i}">✕</button></td></tr>`; }).join('')}</tbody>` : '';
   $('#rfLog').querySelectorAll('[data-rfdel]').forEach((b) => b.onclick = () => { rfLog.splice(Number(b.dataset.rfdel), 1); store.set('rfLog', rfLog); renderRfLog(); });
-  $('#rfNote').textContent = `Margin = the press's peak above the noise floor at that spot. Solid ≥ ${RF_LEVELS.good} dB, marginal ≥ ${RF_LEVELS.ok} dB (first guide, being checked). Tests are saved here and go up with the scan.`;
+  $('#rfNote').textContent = `Graded on the worse of level and margin above the noise at that spot: Solid ≥ ${RF_LEVELS.solid.dbm} dBm and ${RF_LEVELS.solid.margin} dB, Marginal ≥ ${RF_LEVELS.marginal.dbm} dBm and ${RF_LEVELS.marginal.margin} dB, otherwise Fail. Cheap modules differ in absolute dBm, so trust the margin and calibrate the first unit. Usual 433 MHz interferers: car fobs, weather stations, doorbells, alarm sensors, LED drivers. Tests are saved here and go up with the scan.`;
 }
 $('#rfProbeSel').onchange = () => { $('#rfIp').hidden = !!$('#rfProbeSel').value; };
 $('#rfGo').onclick = async () => { if (!rfIp()) return toast('Pick or type the probe IP', true); rfStop(); rfHist = []; try { await api('rfProbe', { ip: rfIp(), mhz: $('#rfFreq').value }); } catch (e) { return toast(e.message, true); } rfPoll(); rfTimer = setInterval(rfPoll, 250); $('#rfGo').textContent = 'Reconnect'; };
@@ -1344,7 +1351,7 @@ $('#rfTest').onclick = async () => {
   rfTesting = { peak: -120, floor: rfLast ? rfLast.floor : -110 }; const b = $('#rfTest'); b.disabled = true;
   for (let s = 5; s > 0; s--) { b.textContent = `Press the remote now… ${s}`; await new Promise((r) => setTimeout(r, 1000)); }
   const t = rfTesting; rfTesting = null; b.disabled = false; b.textContent = 'Test a press';
-  const margin = t.peak - t.floor; const [w] = rfVerdict(margin);
+  const margin = t.peak - t.floor; const [w] = rfVerdict(margin, t.peak);
   rfLog.unshift({ spot, mhz: rfLast ? rfLast.mhz : Number($('#rfFreq').value), peak: t.peak, floor: t.floor, margin, at: new Date().toISOString(), probe: rfIp() }); store.set('rfLog', rfLog); renderRfLog();
   toast(`${spot}: ${margin} dB above the noise · ${w}`);
 };
@@ -1401,7 +1408,7 @@ $('#zbCh').value = store.get('zbCh', ''); $('#zbCh').oninput = () => { store.set
 let survTimer = null, survBusy = false;
 async function survTick() {
   if (survBusy || document.hidden || store.get('tab', '') !== 'wifi') return; survBusy = true;
-  try { const r = await api('wifiSurvey'); if (mode === 'demo') r.networks = r.networks.map((n) => ({ ...n, signal: n.signal + Math.round(Math.random() * 6 - 3) })); survey = r; renderSurvey(); $('#survSum').textContent += ' · live'; } catch {}
+  try { const r = await api('wifiSurvey'); if (mode === 'demo') r.networks = r.networks.map((n) => ({ ...n, signal: n.signal + Math.round(Math.random() * 6 - 3) })); survey = r; renderSurvey(); $('#survSum').textContent += mode === 'app' ? ' · live every 30 s (Android limit: turn off Wi-Fi scan throttling in Developer options for faster)' : ' · live'; } catch {}
   survBusy = false;
 }
 $('#survLive').onchange = () => { clearInterval(survTimer); survTimer = null; if ($('#survLive').checked) { survTick(); survTimer = setInterval(survTick, mode === 'app' ? 30000 : 5000); } };

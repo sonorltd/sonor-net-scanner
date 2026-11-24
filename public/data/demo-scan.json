@@ -22,7 +22,7 @@
    "vendor": "Global Cache",
    "randomMac": false,
    "name": "",
-   "make": "Global Cach\u00e9",
+   "make": "Global Caché",
    "model": "iTachIP2SL",
    "kind": "IR / serial gateway",
    "service": "control",
@@ -175,7 +175,7 @@
    "addressing": {
     "mode": "static",
     "source": "device",
-    "note": "Dahua discovery says DHCP off \u00b7 mask 255.255.255.0 \u00b7 gateway 192.168.0.1"
+    "note": "Dahua discovery says DHCP off · mask 255.255.255.0 · gateway 192.168.0.1"
    },
    "conflict": null
   },
@@ -453,7 +453,7 @@
    "evidence": [
     "MAC maker: Control4",
     "Control4 Director port 5020/5021 open",
-    "Control4 SDDP: c4:control4_ea3 \u00b7 EA-3 \u00b7 controller"
+    "Control4 SDDP: c4:control4_ea3 · EA-3 · controller"
    ],
    "c4Driver": "controller.c4i",
    "isGateway": false,
@@ -535,7 +535,7 @@
    "confidence": "high",
    "evidence": [
     "MAC maker: Control4",
-    "Control4 SDDP: c4:control4_t4_8 \u00b7 T4 8\" Touch Screen"
+    "Control4 SDDP: c4:control4_t4_8 · T4 8\" Touch Screen"
    ],
    "c4Driver": "",
    "isGateway": false,
@@ -595,7 +595,7 @@
    "confidence": "high",
    "evidence": [
     "MAC maker: Control4",
-    "Control4 SDDP: c4:control4_ca1 \u00b7 CA-1 \u00b7 controller"
+    "Control4 SDDP: c4:control4_ca1 · CA-1 · controller"
    ],
    "c4Driver": "",
    "isGateway": false,
@@ -639,7 +639,7 @@
    "vendor": "Global Cache",
    "randomMac": false,
    "name": "",
-   "make": "Global Cach\u00e9",
+   "make": "Global Caché",
    "model": "iTachIP2IR",
    "kind": "IR / serial gateway",
    "service": "control",
@@ -664,7 +664,7 @@
    "ports": [
     {
      "port": 4998,
-     "label": "Global Cach\u00e9"
+     "label": "Global Caché"
     },
     {
      "port": 4999,
@@ -1195,7 +1195,7 @@
    "evidence": [
     "MAC maker: SKY UK",
     "UPnP description: Sky Sky Q 2TB",
-    "Control4 SDDP: sky_q \u00b7 ES240"
+    "Control4 SDDP: sky_q · ES240"
    ],
    "c4Driver": "",
    "isGateway": false,
@@ -1939,7 +1939,7 @@
    "addressing": {
     "mode": "static",
     "source": "device",
-    "note": "SADP says DHCP off \u00b7 mask 255.255.255.0 \u00b7 gateway 192.168.1.1"
+    "note": "SADP says DHCP off · mask 255.255.255.0 · gateway 192.168.1.1"
    },
    "conflict": null
   },
@@ -2010,7 +2010,7 @@
    "addressing": {
     "mode": "dhcp",
     "source": "device",
-    "note": "SADP says DHCP on \u00b7 mask 255.255.255.0 \u00b7 gateway 192.168.1.1"
+    "note": "SADP says DHCP on · mask 255.255.255.0 · gateway 192.168.1.1"
    },
    "conflict": null
   },
@@ -2052,12 +2052,7 @@
    "services": [],
    "upnp": [],
    "ssdpServer": "",
-   "sddp": {
-    "type": "c4:control4_t4_8",
-    "manufacturer": "Control4",
-    "model": "T4 8\" Touch Screen",
-    "host": "c4-t4-kitchen"
-   },
+   "sddp": null,
    "ubnt": null,
    "onvif": null,
    "beacon": null,
@@ -2111,12 +2106,65 @@
    "services": [],
    "upnp": [],
    "ssdpServer": "",
-   "sddp": {
-    "type": "c4:control4_t4_8",
-    "manufacturer": "Control4",
-    "model": "T4 8\" Touch Screen",
-    "host": "c4-t4-kitchen"
+   "sddp": null,
+   "ubnt": null,
+   "onvif": null,
+   "beacon": null,
+   "netbios": null,
+   "sadp": null,
+   "dahua": null,
+   "foreign": false,
+   "subnetNote": "",
+   "addressing": {
+    "mode": "unknown",
+    "source": "",
+    "note": ""
    },
+   "conflict": null
+  },
+  {
+   "ip": "192.168.1.68",
+   "mac": "C4:7F:51:41:7C:0E",
+   "vendor": "",
+   "randomMac": false,
+   "name": "neoHub",
+   "make": "Heatmiser",
+   "model": "neoHub Gen 2",
+   "kind": "neoHub",
+   "service": "hvac",
+   "serviceLabel": "06 HVAC",
+   "firmware": "2153",
+   "firmwareHint": "",
+   "serial": "",
+   "confidence": "high",
+   "evidence": [
+    "Heatmiser neoHub port 4242/4243 open"
+   ],
+   "c4Driver": "",
+   "isGateway": false,
+   "isSelf": false,
+   "seenBy": [
+    "tcp",
+    "arp",
+    "mdns"
+   ],
+   "latency": 5,
+   "hostnames": [],
+   "ports": [
+    {
+     "port": 4242,
+     "label": "Heatmiser neoHub"
+    },
+    {
+     "port": 4243,
+     "label": "neoHub API (wss)"
+    }
+   ],
+   "web": [],
+   "services": [],
+   "upnp": [],
+   "ssdpServer": "",
+   "sddp": null,
    "ubnt": null,
    "onvif": null,
    "beacon": null,

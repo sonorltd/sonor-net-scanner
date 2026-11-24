@@ -1,4 +1,4 @@
-# Sonor Network Scanner · v1.6.1
+# Sonor Network Scanner · v1.6.3
 
 A commissioning scanner for AV / Control4 sites. It finds every device on the network and says what it is in AV terms (make, model, firmware, serial where the device publishes it), checks the site against the project's plan in the Network Map app, and prints an as-found IP schedule.
 
@@ -72,12 +72,16 @@ Not done yet: hosting the page at apps.sonor.co.uk (needs the `sonorltd/sonor-ne
   list (attach to a project). **Review** opens an uploaded scan here; Fill MACs / Mark reviewed calls `net_scan_apply`, which writes
   the revision note into Network Map's history (`sonor_revisions`, app `network-map`: who scanned, who reviewed, what changed).
 
+## v1.6.3 (2026-11-24): Heatmiser neo
+- **Heatmiser neoHub** found by its local API ports (4242 legacy, 4243 websocket) as well as the vendor name, and shown on the RF tab as its own Zigbee mesh: keep its channel off the Control4 and Hue channels, mains neoStats repeat and battery stats do not. Ranges are a draft until researched.
+- The RF tab says plainly that Zigbee nodes (Control4 keypads and dimmers, neoStats, Hue bulbs) are not on the LAN; they will come from the Takeoffs wireless plan (handover: project files `handover/takeoffs-wireless-planning.md`).
+
 ## v1.6.0 (2026-11-24): real-world performance on the Wi-Fi map
 - **Speed test at every spot** ("+ speed test", on by default): each walk-test reading also stores download, upload and jitter; the room table shows the slowest speed per room and the Speed heat layer colours the plan by Mb/s.
 - **Predicted vs tested** (default view): the prediction from the APs on the plan shows faintly straight away; each spot the engineer stands on and records turns solid within 3 m, live. Each reading shows how far it is from the prediction, e.g. −61 (−6), and the panel shows the % of the floor tested.
 - **Shared project**: `?pid=` and the workspace's `sonor_active_project_id` pick the project; choosing one writes it back and fires `sonor:project-changed`, and the page follows a project picked elsewhere. `?pid=<uuid>&scan=<net_scans.id>` (Network Map's Scans rows) opens that upload for review.
 - **Live spectrum** (Wi-Fi tab › Live): re-surveys every 5 s (30 s on the tablet, Android's scan limit). The 2.4 GHz chart shows Zigbee / Thread channels 11–26 underneath, coloured by the Wi-Fi on top of each, with the microwave band marked; the three clearest Zigbee channels are listed and the site's Zigbee channel (typed once) is checked against the Wi-Fi here. Non-Wi-Fi noise (Bluetooth, microwaves, the mesh itself) needs an 802.15.4 radio (ESP32-C6 energy scan, Engineer Toolkit).
-- **RF tab**: RF hubs the scan finds (Bond via `_bond._tcp` / Olibra MAC, Somfy TaHoma `_kizbox._tcp`, Lutron, Hue, Control4 Zigbee, Shelly) with their band and placement checks, and the **Sonor RF probe** (`rf-probe/`: ESP32 + CC1101, receive only) left at a blind or motor: live level, noise floor, and **Test a press** measures the margin above the noise at that spot (433.42 RTS, 433.92, 315, 868.3). Tests are kept and uploaded with the scan (`netinfo.rf`). Thresholds are a first guide until the researched rules land.
+- **RF tab**: RF hubs the scan finds (Bond via `_bond._tcp` / Olibra MAC, Somfy TaHoma `_kizbox._tcp`, Lutron, Hue, Control4 Zigbee, Shelly) with their band and placement checks, and the **Sonor RF probe** (`rf-probe/`: ESP32 + CC1101, receive only) left at a blind or motor: live level, noise floor, and **Test a press** measures the margin above the noise at that spot (433.42 RTS, 433.92, 315, 868.3). Tests are kept and uploaded with the scan (`netinfo.rf`). Rules come from the research file `public/data/wifi-rf-rules.json` (Control4 Zigbee 15/20/25 with plain-sentence reasons, 12/13 warning, AP ≥ 5 m, -67 / -82 dBm lines on the charts, probe grades on level and margin, UK Lutron 868 MHz).
 - Every IP has a ↗ link to the device's web page.
 - Readings are pinned where the engineer tapped "Stand here", never at the AP. The demo starts blank (old demo readings that sat on the APs are cleared) and simulates each reading at the spot you tap.
 
