@@ -1,4 +1,4 @@
-# Sonor Network Scanner · v1.6.5
+# Sonor Network Scanner · v1.6.6
 
 A commissioning scanner for AV / Control4 sites. It finds every device on the network and says what it is in AV terms (make, model, firmware, serial where the device publishes it), checks the site against the project's plan in the Network Map app, and prints an as-found IP schedule.
 
@@ -71,6 +71,9 @@ Not done yet: hosting the page at apps.sonor.co.uk (needs the `sonorltd/sonor-ne
 - **Check against project** shows the project's uploaded scans (one master table, filtered per project) and the office's Unassigned
   list (attach to a project). **Review** opens an uploaded scan here; Fill MACs / Mark reviewed calls `net_scan_apply`, which writes
   the revision note into Network Map's history (`sonor_revisions`, app `network-map`: who scanned, who reviewed, what changed).
+
+## v1.6.6 (2026-11-24): one shared wireless module
+- The Zigbee / Wi-Fi channel maths, the mesh systems and maker codes, hub guidance, RF and Zigbee grades, RF frequencies and the probe HTTP paths now live in the workspace module **`data/sonor-wireless.js`** (`window.SonorWireless`, or `require()` in the Pi and Android agents). Master: `~/Code/Sonor/sonor-wireless.js`; `sync-everything.sh` copies it (and the research `wifi-rf-rules.json`) to every app's `data/` and to this app's `public/data/`, so Takeoffs' wireless planning, Site and Remotes use the same numbers. `test/wireless.test.js` pins them.
 
 ## v1.6.5 (2026-11-24): Zigbee probe, everything picked from lists
 - **Sonor Zigbee probe** (`zb-probe/`: ESP32-C6, receive only, found by the scan through `_sonor-zb._tcp`): **Find meshes** sends a beacon request on 11–26 and fills the site's mesh channels by itself (maker from the extended PAN id: Control4 `00:0F:FF`, Hue `00:17:88`; an unknown mesh goes to Heatmiser when a neoHub is on the LAN, else Other; each found mesh has a "which system" list). **Noise sweep** measures real energy per channel (dashed line on the chart, a column in the table, flags on busy mesh channels). **Meter** lists every node heard on a mesh, strongest first, with signal, LQI and a draft grade (Solid ≥ -75, Marginal ≥ -85); **Test here** saves the spot. All of it goes up with the scan (`netinfo.zigbee.found / energy / tests`).

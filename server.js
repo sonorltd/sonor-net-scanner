@@ -14,7 +14,7 @@ const tools = require('./lib/tools');
 const { netinfo, speedtest } = require('./lib/netinfo');
 const wifi = require('./lib/wifi');
 
-const VERSION = '1.6.5';
+const VERSION = '1.6.6';
 const PORT = Number(process.env.PORT || 8050);
 const DATA = process.env.NETSCAN_DATA || path.join(__dirname, 'scans');
 const PUBLIC = path.join(__dirname, 'public');
@@ -46,6 +46,14 @@ function saveScan(s) {
 }
 latest = (() => { const l = listScans()[0]; return l ? loadScan(l.id) : null; })();
 if (latest) state.lastId = latest.id;
+
+const W = require('./public/data/sonor-wireless.js');
+async function probeGet(kind, ip, args) {
+  if (!net.isIp(ip || '')) return [400, { error: 'pick the probe or enter its IPv4 address' }];
+  const { path, timeout } = W.probePath(kind, args);
+  const r = await new Promise((resolve, reject) => { const q = require('http').get(`http://${ip}/${path}`, { timeout }, (res) => { let b = ''; res.on('data', (d) => { b += d; }); res.on('end', () => { try { resolve(JSON.parse(b)); } catch { reject(new Error(`Not a ${W.PROBES[kind].kind} at ${ip}`)); } }); }); q.on('timeout', () => q.destroy(new Error('The probe did not answer'))); q.on('error', reject); });
+  return [200, r];
+}
 
 const actions = {
   state: async () => [200, { version: VERSION, hostname: os.hostname(), interfaces: net.localSubnets(), scan: state, latest: latest && { id: latest.id, startedAt: latest.startedAt, count: latest.devices.length } }],
@@ -97,20 +105,9 @@ const actions = {
   wol: async ({ mac } = {}) => [200, await tools.wol(mac, ['255.255.255.255', ...net.localSubnets().map((l) => { const [b, bits] = l.cidr.split('/'); return net.intToIp((net.ipToInt(b) | (2 ** (32 - Number(bits)) - 1)) >>> 0); })])],
 
   // RF tab: read a Sonor RF probe (ESP32 + CC1101, rf-probe/) on the site network. The agent fetches it so an https page can too.
-  rfProbe: async ({ ip, mhz } = {}) => {
-    if (!net.isIp(ip || '')) return [400, { error: 'enter the probe IPv4 address' }];
-    const url = `http://${ip}/${mhz ? 'freq?mhz=' + encodeURIComponent(mhz) : 'rssi'}`;
-    const r = await new Promise((resolve, reject) => { const q = require('http').get(url, { timeout: 2000 }, (res) => { let b = ''; res.on('data', (d) => { b += d; }); res.on('end', () => { try { resolve(JSON.parse(b)); } catch { reject(new Error('Not a Sonor RF probe at ' + ip)); } }); }); q.on('timeout', () => q.destroy(new Error('The probe did not answer'))); q.on('error', reject); });
-    return [200, r];
-  },
-
-  // Zigbee tab: read a Sonor Zigbee probe (ESP32-C6, zb-probe/). op: scan (find meshes, ~5 s) | energy (noise per channel) | listen (meter on ch)
-  zbProbe: async ({ ip, op = 'listen', ch, reset } = {}) => {
-    if (!net.isIp(ip || '')) return [400, { error: 'pick the Zigbee probe' }];
-    const path = op === 'scan' ? 'scan' : op === 'energy' ? 'energy' : `listen?${ch ? 'ch=' + Number(ch) : ''}${reset ? '&reset=1' : ''}`;
-    const r = await new Promise((resolve, reject) => { const q = require('http').get(`http://${ip}/${path}`, { timeout: op === 'listen' ? 2000 : 9000 }, (res) => { let b = ''; res.on('data', (d) => { b += d; }); res.on('end', () => { try { resolve(JSON.parse(b)); } catch { reject(new Error('Not a Sonor Zigbee probe at ' + ip)); } }); }); q.on('timeout', () => q.destroy(new Error('The probe did not answer'))); q.on('error', reject); });
-    return [200, r];
-  },
+  // RF / Zigbee tabs: read a Sonor probe on the site network (paths from the shared data/sonor-wireless.js). The agent fetches it so an https page can too.
+  rfProbe: async ({ ip, mhz } = {}) => probeGet('rf', ip, { mhz }),
+  zbProbe: async ({ ip, op, ch, reset } = {}) => probeGet('zb', ip, { op, ch, reset }),
 
   // Re-probe one address (after a device is plugged in or renamed).
   probe: async ({ ip } = {}) => {
