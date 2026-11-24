@@ -1,4 +1,4 @@
-# Sonor Network Scanner · v1.5.0
+# Sonor Network Scanner · v1.6.0
 
 A commissioning scanner for AV / Control4 sites. It finds every device on the network and says what it is in AV terms (make, model, firmware, serial where the device publishes it), checks the site against the project's plan in the Network Map app, and prints an as-found IP schedule.
 
@@ -71,6 +71,11 @@ Not done yet: hosting the page at apps.sonor.co.uk (needs the `sonorltd/sonor-ne
 - **Check against project** shows the project's uploaded scans (one master table, filtered per project) and the office's Unassigned
   list (attach to a project). **Review** opens an uploaded scan here; Fill MACs / Mark reviewed calls `net_scan_apply`, which writes
   the revision note into Network Map's history (`sonor_revisions`, app `network-map`: who scanned, who reviewed, what changed).
+
+## v1.6.0 (2026-11-24): real-world performance on the Wi-Fi map
+- **Speed test at every spot** ("+ speed test", on by default): each walk-test reading also stores download, upload and jitter; the room table shows the slowest speed per room and the Speed heat layer colours the plan by Mb/s.
+- **Predicted vs tested** (default view): the prediction from the APs on the plan shows faintly straight away; each spot the engineer stands on and records turns solid within 3 m, live. Each reading shows how far it is from the prediction, e.g. −61 (−6), and the panel shows the % of the floor tested.
+- Readings are pinned where the engineer tapped "Stand here", never at the AP. The demo starts blank (old demo readings that sat on the APs are cleared) and simulates each reading at the spot you tap.
 
 ## v1.5.0 (2026-11-24): Wi-Fi map on the Takeoffs plan, tablet sign-in
 

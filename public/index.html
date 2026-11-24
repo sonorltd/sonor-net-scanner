@@ -156,6 +156,7 @@ a { color: var(--accent-c); }
   tr { break-inside: avoid; } @page { size: A4 landscape; margin: 12mm; }
 }
 @media (max-width: 760px) { .toolgrid { grid-template-columns: 1fr; } .tabs button { padding: 12px 10px 10px; font-size: 11px; } .hide-sm { display: none; } .tiles { grid-template-columns: repeat(3, 1fr); gap: 6px; } .tile { padding: 6px 8px; } .tile b { font-size: 16px; } .tile span { font-size: 11px; } main { padding: 10px 10px 40px; } }
+.ipgo { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-left: 4px; border-radius: 5px; border: 1px solid var(--line, #3a3a3c); color: var(--accent, #4bb9d3); text-decoration: none; font-size: 12px; line-height: 1; vertical-align: 1px; } .ipgo:hover { background: color-mix(in srgb, var(--accent, #4bb9d3) 20%, transparent); }
 </style>
 <script src="./data/portinfo.js"></script>
 </head>
@@ -236,11 +237,11 @@ a { color: var(--accent-c); }
         <div class="row wmbar" style="margin-top:8px;flex-wrap:wrap;gap:8px">
           <div class="seg" id="wmTools"><button data-tool="stand">Stand here</button><button data-tool="add">Add AP</button><button data-tool="move">Move AP</button><button data-tool="remove">Remove AP</button><button data-tool="link" title="Stand under an AP and tap it: links the radio this tablet is on to that AP">Link AP</button><button data-tool="scale">Set scale</button></div>
           <select id="wmModel" title="Model for Add AP"></select>
-          <div class="seg" id="wmHeat"><button data-heat="measured" class="on">Measured</button><button data-heat="predicted">Predicted</button><button data-heat="off">Off</button></div>
+          <div class="seg" id="wmHeat"><button data-heat="compare" class="on" title="Predicted everywhere (faint), real readings take over as each spot is tested">Predicted vs tested</button><button data-heat="measured">Tested</button><button data-heat="predicted">Predicted</button><button data-heat="speed" title="Download speed from the speed tests at each spot">Speed</button><button data-heat="off">Off</button></div>
         </div>
         <div class="wmgrid">
           <div><div class="wmwrap"><canvas id="wmCv"></canvas><div class="muted small wtip" id="wmTip"></div><div class="empty" id="wmEmpty">Pick the project and press <b>Load plan</b> to get its Takeoffs floor plan, rooms and access points. No plan yet? Use <b>Own plan</b> (a photo or PDF of any drawing) or <b>Grid</b>.</div></div>
-            <div class="row" style="margin-top:8px"><input id="walkRoom" placeholder="Room (taken from the plan when you tap it)" list="walkRooms" style="flex:1"><datalist id="walkRooms"></datalist><button id="walkGo" class="primary">Record</button></div>
+            <div class="row" style="margin-top:8px"><input id="walkRoom" placeholder="Room (taken from the plan when you tap it)" list="walkRooms" style="flex:1"><datalist id="walkRooms"></datalist><label class="small" title="Adds a download / upload test to Cloudflare at each spot (about 15 seconds, ~35 MB)" style="white-space:nowrap"><input type="checkbox" id="walkSpeed"> + speed test</label><button id="walkGo" class="primary">Record</button></div>
             <div class="row small" style="margin-top:8px;flex-wrap:wrap;gap:8px"><button class="btn-sm" id="walkCsv">CSV</button><button class="btn-sm" id="walkClear">Clear readings</button><span class="muted" id="walkSum"></span></div></div>
           <div id="wmSide"></div>
         </div>
@@ -329,7 +330,7 @@ a { color: var(--accent-c); }
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.6.0';
 const HOSTED_URL = 'https://apps.sonor.co.uk/sonor-net-scanner/';
 if (window.SonorHeader) {
   SonorHeader.init({ appName: 'Network Scanner', repo: 'sonor-net-scanner' });
@@ -579,6 +580,11 @@ function buildAdvice() {
     advice.set(d.ip, { level: 'info', title: 'Not in the plan', items });
   }
 }
+// v1.6.0: every IP is a quick link to the device's own web page (its first web port if the scan saw one, else http://ip)
+function webUrl(d) { const ip = typeof d === 'string' ? d : d.ip; const ps = (d && d.ports ? d.ports.map((p) => p.port) : []); const w = [443, 80, 8443, 8080, 8000, 5000, 9090, 1400].find((p) => ps.includes(p));
+  if (!w) return `http://${ip}/`; const proto = [443, 8443].includes(w) ? 'https' : 'http'; return `${proto}://${ip}${[80, 443].includes(w) ? '' : ':' + w}${w === 1400 ? '/support/review' : '/'}`; }
+const ipLink = (d) => `<a class="ipgo" href="${esc(webUrl(d))}" target="_blank" rel="noopener" title="Open ${esc(webUrl(d))} in the browser">↗</a>`;
+document.addEventListener('click', (e) => { if (e.target.closest && e.target.closest('a.ipgo')) e.stopPropagation(); }, true);
 const planCell = (d) => { const a = advice.get(d.ip); if (!a) return plan ? '<span class="muted small">—</span>' : ''; return `<span class="plan-${a.level}" data-tip="${esc(d.ip)}">${{ ok: '✓', warn: '!', info: '+' }[a.level]}</span>`; };
 let tipEl = null;
 function showTip(el) {
@@ -651,7 +657,7 @@ function devRow(d) {
   const nm = nameOf(d);
   const ports = d.ports.slice(0, 8).map((p) => `<span class="chip ${['C4 Director', 'Sonos', 'Global Caché', 'Crestron CIP', 'Samsung MDC', 'LG webOS'].includes(p.label) ? 'hot' : ''}" title="${esc(p.label)}">${p.port}</span>`).join('') + (d.ports.length > 8 ? `<span class="chip">+${d.ports.length - 8}</span>` : '');
   return `<tr class="dev" data-ip="${esc(d.ip)}" style="--c:${svcColor(d.service)}">${plan ? `<td>${planCell(d)}</td>` : ''}
-    <td class="mono"><span class="sw" style="--c:${svcColor(d.service)}"></span>${esc(d.ip)}${d.isGateway ? ' <span class="chip">gateway</span>' : ''}${d.foreign ? ' <span class="pill bad" title="' + esc(d.subnetNote) + '">other subnet</span>' : ''}</td>
+    <td class="mono"><span class="sw" style="--c:${svcColor(d.service)}"></span>${esc(d.ip)} ${ipLink(d)}${d.isGateway ? ' <span class="chip">gateway</span>' : ''}${d.foreign ? ' <span class="pill bad" title="' + esc(d.subnetNote) + '">other subnet</span>' : ''}</td>
     <td>${addrChip(d)}</td>
     <td>${esc(nm) || '<span class="muted">—</span>'}${d._new ? '<span class="new">new</span>' : ''}${d.hostnames.length && d.hostnames[0] !== nm ? `<div class="muted small">${esc(d.hostnames[0])}</div>` : ''}</td>
     <td class="${d.confidence === 'low' ? 'conf-low' : ''}">${esc(modelLine(d)) || '<span class="muted">—</span>'}${d.serial ? `<div class="muted small">S/N ${esc(d.serial)}</div>` : ''}</td>
@@ -685,7 +691,7 @@ function openDrawer(ip) {
     <textarea id="nNote" rows="2" style="width:100%;margin-top:6px" placeholder="Notes (port, location, login hint…)">${esc(n.note || '')}</textarea>
     <div class="row" style="margin-top:6px"><button id="nSave" class="primary">Save</button><button id="reprobe">Re-scan this device</button></div>
     <h4>Identity</h4>
-    ${kv([['IP', `<span class="mono">${esc(d.ip)}</span>`], ['Address', addrOf(d).label ? `${addrChip(d)} <span class="small muted">${esc(addrOf(d).note)}</span>` : `<span class="small muted">${esc(addrOf(d).note)}</span>`], ['MAC', `<span class="mono">${esc(d.mac)}</span>${d.randomMac ? ' <span class="pill warn">private address</span>' : ''}`], ['MAC maker', esc(d.vendor)],
+    ${kv([['IP', `<span class="mono">${esc(d.ip)}</span> ${ipLink(d)}`], ['Address', addrOf(d).label ? `${addrChip(d)} <span class="small muted">${esc(addrOf(d).note)}</span>` : `<span class="small muted">${esc(addrOf(d).note)}</span>`], ['MAC', `<span class="mono">${esc(d.mac)}</span>${d.randomMac ? ' <span class="pill warn">private address</span>' : ''}`], ['MAC maker', esc(d.vendor)],
       ['Make', esc(d.make)], ['Model', esc(d.model)], ['Firmware', esc(d.firmware || d.firmwareHint)], ['Serial', esc(d.serial)], ['Names', esc(d.hostnames.join(', '))],
       ['Control4', d.c4Driver ? `driver <span class="mono">${esc(d.c4Driver)}</span>` : ''], ['Response', d.latency != null ? d.latency + ' ms' : ''], ['Seen by', esc(d.seenBy.join(', '))]])}
     ${webLinks.length ? `<h4>Web pages</h4>${webLinks.join('<br>')}` : ''}
@@ -781,7 +787,7 @@ function renderCheck() {
   for (const r of rows.slice().sort((a, b) => order[a.status[0]] - order[b.status[0]] || ipNum(a.p._ip || '255.255.255.255') - ipNum(b.p._ip || '255.255.255.255'))) {
     html += `<tr><td><span class="pill ${r.status[0]}">${esc(r.status[1])}</span></td><td><span class="sw" style="--c:${svcColor(r.p.service)}"></span>${esc(r.p.device)}<div class="muted small">${esc(r.p.notes || '').slice(0, 80)}</div></td>
       <td class="small">${esc(r.p.location || '')}</td><td class="mono">${esc(r.p._ip) || '<span class="muted">—</span>'}</td><td class="mono">${esc(r.p._mac) || '<span class="muted">—</span>'}</td>
-      <td>${r.f ? `<a href="#" data-ip="${esc(r.f.ip)}">${esc(r.f.ip)}</a> ${esc(nameOf(r.f) || modelLine(r.f) || r.f.kind)}` : ''}</td><td class="mono small">${r.f ? esc(r.f.mac) + (r.f.firmware ? `<div class="muted" style="font-family:var(--font-ui)">${esc(r.f.firmware)}</div>` : '') : ''}</td></tr>`;
+      <td>${r.f ? `<a href="#" data-ip="${esc(r.f.ip)}">${esc(r.f.ip)}</a> ${ipLink(r.f)} ${esc(nameOf(r.f) || modelLine(r.f) || r.f.kind)}` : ''}</td><td class="mono small">${r.f ? esc(r.f.mac) + (r.f.firmware ? `<div class="muted" style="font-family:var(--font-ui)">${esc(r.f.firmware)}</div>` : '') : ''}</td></tr>`;
   }
   if (extra.length) {
     html += `<tr class="grp" style="--c:var(--accent-c)"><td colspan="7">On the network but not in the plan <span class="muted small">· personal devices hidden</span></td></tr>`;
@@ -932,7 +938,7 @@ function renderDiscovery() {
     const rows = scanData.devices.map((d) => [d, get(d)]).filter(([, x]) => x);
     return `<div class="panel disc" style="padding:0"><div class="head"><span class="lbl" style="color:var(--text)">${esc(title)}</span><span class="n">${rows.length} found</span></div>
       <div class="what">${esc(what)}</div>
-      ${rows.length ? `<div style="overflow-x:auto"><table><thead><tr><th>IP</th>${cols.map(([l]) => `<th>${l}</th>`).join('')}<th>MAC</th></tr></thead><tbody>${rows.map(([d, x]) => `<tr class="dev" data-ip="${esc(d.ip)}" style="--c:${svcColor(d.service)}"><td class="mono"><span class="sw" style="--c:${svcColor(d.service)}"></span>${esc(d.ip)}${d.foreign ? ' <span class="pill bad">other subnet</span>' : ''}</td>${cols.map(([, f]) => `<td class="small">${esc(f(x) || '') || '<span class="muted">—</span>'}</td>`).join('')}<td class="mono small">${esc(d.mac)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="muted small" style="padding:8px 12px 12px">Nothing answered.</div>'}</div>`;
+      ${rows.length ? `<div style="overflow-x:auto"><table><thead><tr><th>IP</th>${cols.map(([l]) => `<th>${l}</th>`).join('')}<th>MAC</th></tr></thead><tbody>${rows.map(([d, x]) => `<tr class="dev" data-ip="${esc(d.ip)}" style="--c:${svcColor(d.service)}"><td class="mono"><span class="sw" style="--c:${svcColor(d.service)}"></span>${esc(d.ip)} ${ipLink(d)}${d.foreign ? ' <span class="pill bad">other subnet</span>' : ''}</td>${cols.map(([, f]) => `<td class="small">${esc(f(x) || '') || '<span class="muted">—</span>'}</td>`).join('')}<td class="mono small">${esc(d.mac)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="muted small" style="padding:8px 12px 12px">Nothing answered.</div>'}</div>`;
   }).join('');
   $('#discList').querySelectorAll('tr.dev').forEach((tr) => tr.onclick = () => openDrawer(tr.dataset.ip));
 }
@@ -991,7 +997,7 @@ function renderIssues() {
   const col = { bad: 'var(--bad)', warn: 'var(--warn)', info: 'var(--muted)' };
   $('#issueList').innerHTML = netPanel + list.map((i) => `<div class="panel" style="border-left:4px solid ${col[i.level]}"><div class="row" style="justify-content:space-between"><span class="lbl" style="color:var(--text)">${esc(i.title)}</span><span class="pill ${i.level === 'info' ? 'info' : i.level}">${i.list.length}</span></div>
     <p class="muted small" style="margin:6px 0 8px">${esc(i.fix)}</p>
-    <table><tbody>${i.list.map((d) => `<tr class="dev" data-ip="${esc(d.ip)}" style="--c:${svcColor(d.service)}"><td class="mono" style="width:140px"><span class="sw" style="--c:${svcColor(d.service)}"></span>${esc(d.ip)}</td><td>${esc(nameOf(d) || modelLine(d) || d.kind || d.vendor || 'Unknown')}</td><td class="small muted">${esc(d.subnetNote || (d.conflict && d.conflict.sources.join(' · ')) || (d.addressing || {}).note || d.kind || '')}</td><td class="mono small">${esc(d.mac)}</td></tr>`).join('')}</tbody></table></div>`).join('');
+    <table><tbody>${i.list.map((d) => `<tr class="dev" data-ip="${esc(d.ip)}" style="--c:${svcColor(d.service)}"><td class="mono" style="width:160px"><span class="sw" style="--c:${svcColor(d.service)}"></span>${esc(d.ip)} ${ipLink(d)}</td><td>${esc(nameOf(d) || modelLine(d) || d.kind || d.vendor || 'Unknown')}</td><td class="small muted">${esc(d.subnetNote || (d.conflict && d.conflict.sources.join(' · ')) || (d.addressing || {}).note || d.kind || '')}</td><td class="mono small">${esc(d.mac)}</td></tr>`).join('')}</tbody></table></div>`).join('');
   $('#issueList').querySelectorAll('tr.dev').forEach((tr) => tr.onclick = () => openDrawer(tr.dataset.ip));
 }
 
@@ -1138,26 +1144,29 @@ async function walkRecord() {
     const gw = (netInfo && netInfo.gateway && netInfo.gateway.ip) || (scanData && scanData.gateways && scanData.gateways[0]) || '';
     const pings = []; if (gw) for (let i = 0; i < 4; i++) { try { pings.push(await api('ping', { host: gw })); } catch { break; } }
     const ok = pings.filter((p) => p.ok).map((p) => p.ms);
-    const avg = reads.length ? Math.round(reads.reduce((a, b) => a + b, 0) / reads.length) : null;
-    if (!pos) walk = walk.filter((w) => !(w.room.toLowerCase() === room.toLowerCase() && w.wx == null)); const ap = WifiMap.apFor(last.bssid);
+    let avg = reads.length ? Math.round(reads.reduce((a, b) => a + b, 0) / reads.length) : null;
+    const sim = mode === 'demo' && pos ? WifiMap.simAt(pos) : null; if (sim) { avg = sim.signal; reads.length = 0; reads.push(avg - 2, avg, avg + 2); } // demo: the reading is where you stand, not at the AP
+    let speed = null; if ($('#walkSpeed').checked) { btn.textContent = 'Speed test…'; try { speed = await api('speedtest'); if (mode === 'demo' && speed && avg != null) speed = { ...speed, downMbps: +Math.max(2, (speed.downMbps * (1 + (avg + 45) / 40))).toFixed(1), upMbps: +Math.max(1, (speed.upMbps * (1 + (avg + 45) / 40))).toFixed(1) }; } catch (e) { toast('Speed test failed: ' + e.message, true); } }
+    if (!pos) walk = walk.filter((w) => !(w.room.toLowerCase() === room.toLowerCase() && w.wx == null)); const ap = sim ? { id: sim.ap } : WifiMap.apFor(last.bssid);
     walk.push({ room: room || 'Spot', at: new Date().toISOString(), signal: avg, min: reads.length ? Math.min(...reads) : null, max: reads.length ? Math.max(...reads) : null, ssid: last.ssid, bssid: last.bssid, vendor: last.vendor, channel: last.channel, band: last.band, rate: last.rate || (last.linkMbps ? last.linkMbps + ' Mb/s' : ''),
-      pingMs: ok.length ? +(ok.reduce((a, b) => a + b, 0) / ok.length).toFixed(1) : null, loss: pings.length ? Math.round(100 * (pings.length - ok.length) / pings.length) : null, floorId: pos ? pos.floorId : null, wx: pos ? +pos.x.toFixed(1) : null, wy: pos ? +pos.y.toFixed(1) : null, ap: ap ? ap.id : null });
-    store.set('walk', walk); WifiMap.clearPos(); $('#walkRoom').value = ''; renderWalk(); toast(`${room || 'Here'}: ${avg} dBm (${sigWord(avg)})${ap ? ' from ' + ap.id : ''}`);
+      pingMs: ok.length ? +(ok.reduce((a, b) => a + b, 0) / ok.length).toFixed(1) : null, loss: pings.length ? Math.round(100 * (pings.length - ok.length) / pings.length) : null, downMbps: speed ? speed.downMbps : null, upMbps: speed ? speed.upMbps : null, jitterMs: speed ? speed.jitterMs : null, floorId: pos ? pos.floorId : null, wx: pos ? +pos.x.toFixed(1) : null, wy: pos ? +pos.y.toFixed(1) : null, ap: ap ? ap.id : null });
+    store.set('walk', walk); WifiMap.clearPos(); $('#walkRoom').value = ''; renderWalk(); toast(`${room || 'Here'}: ${avg} dBm (${sigWord(avg)})${ap ? ' from ' + ap.id : ''}${speed ? ` · ↓ ${speed.downMbps} ↑ ${speed.upMbps} Mb/s` : ''}`);
   } catch (e) { toast(e.message, true); }
   btn.disabled = false; btn.textContent = 'Record';
 }
+const mbHex = (m) => (m == null ? '#8E8E93' : m >= 100 ? '#2fbf71' : m >= 50 ? '#7cc95a' : m >= 25 ? '#e3a72f' : m >= 10 ? '#e5784d' : '#e5484d');
 const shownWalk = () => reviewWalk || walk;
 function renderWalk() {
   $('#walkRooms').innerHTML = [...new Set([...shownWalk().map((w) => w.room), ...WALK_ROOMS])].map((r) => `<option value="${esc(r)}">`).join('');
   const aps = new Set(shownWalk().map((w) => w.bssid || w.ap).filter(Boolean)); const weak = shownWalk().filter((w) => w.signal != null && w.signal < -72);
-  $('#walkSum').textContent = shownWalk().length ? `${shownWalk().length} reading${shownWalk().length > 1 ? 's' : ''} · ${aps.size} access point${aps.size === 1 ? '' : 's'}${weak.length ? ` · ${weak.length} weak spot${weak.length > 1 ? 's' : ''}` : ''}` : '';
-  $('#walkList').innerHTML = shownWalk().slice().sort((a, b) => (a.signal ?? -200) - (b.signal ?? -200)).map((w) => `<div class="wrow"><div><b>${esc(w.room)}</b> <span class="m">${w.wx != null ? '📍 ' : ''}${w.ap ? esc(w.ap) + ' · ' : ''}${esc(w.band || '')} ch ${esc(w.channel ?? '')} · ${esc(w.vendor || w.bssid || '')}${w.pingMs != null ? ` · router ${w.pingMs} ms` : ''}${w.loss ? ` · ${w.loss}% lost` : ''}</span></div><div><div class="sb"><div style="width:${sigPct(w.signal)}%;--c:${sigHex(w.signal)}"></div></div><span class="m">${w.signal ?? '—'} dBm · ${sigWord(w.signal)}</span></div>${reviewWalk ? '<span></span>' : `<button class="btn-sm" data-wdel="${esc(w.at)}">✕</button>`}</div>`).join('') || '<p class="muted small">No readings yet.</p>';
+  $('#walkSum').textContent = shownWalk().length ? `${shownWalk().length} reading${shownWalk().length > 1 ? 's' : ''} · ${aps.size} access point${aps.size === 1 ? '' : 's'}${weak.length ? ` · ${weak.length} weak spot${weak.length > 1 ? 's' : ''}` : ''}${(() => { const sp = shownWalk().filter((w) => w.downMbps != null); return sp.length ? ` · slowest ↓ ${Math.min(...sp.map((w) => w.downMbps))} Mb/s` : ''; })()}` : '';
+  $('#walkList').innerHTML = shownWalk().slice().sort((a, b) => (a.signal ?? -200) - (b.signal ?? -200)).map((w) => `<div class="wrow"><div><b>${esc(w.room)}</b> <span class="m">${w.wx != null ? '📍 ' : ''}${w.ap ? esc(w.ap) + ' · ' : ''}${esc(w.band || '')} ch ${esc(w.channel ?? '')} · ${esc(w.vendor || w.bssid || '')}${w.downMbps != null ? ` · <b style="color:${mbHex(w.downMbps)}">↓ ${w.downMbps} ↑ ${w.upMbps} Mb/s</b>` : ''}${w.pingMs != null ? ` · router ${w.pingMs} ms` : ''}${w.loss ? ` · ${w.loss}% lost` : ''}</span></div><div><div class="sb"><div style="width:${sigPct(w.signal)}%;--c:${sigHex(w.signal)}"></div></div><span class="m">${w.signal ?? '—'} dBm · ${sigWord(w.signal)}</span></div>${reviewWalk ? '<span></span>' : `<button class="btn-sm" data-wdel="${esc(w.at)}">✕</button>`}</div>`).join('') || '<p class="muted small">No readings yet.</p>';
   $('#walkList').querySelectorAll('[data-wdel]').forEach((b) => b.onclick = () => { walk = walk.filter((w) => w.at !== b.dataset.wdel); store.set('walk', walk); renderWalk(); });
   WifiMap.draw();
 }
 function walkCsv() {
   if (!shownWalk().length) return toast('No readings yet', true);
-  const rows = [['Room', 'AP', 'Signal dBm', 'Min', 'Max', 'Quality', 'Wi-Fi', 'AP', 'AP maker', 'Band', 'Channel', 'Router ping ms', 'Loss %', 'Time']].concat(shownWalk().map((w) => [w.room, w.ap, w.signal, w.min, w.max, sigWord(w.signal), w.ssid, w.bssid, w.vendor, w.band, w.channel, w.pingMs, w.loss, w.at]));
+  const rows = [['Room', 'AP', 'Signal dBm', 'Min', 'Max', 'Quality', 'Wi-Fi', 'AP', 'AP maker', 'Band', 'Channel', 'Router ping ms', 'Loss %', 'Download Mb/s', 'Upload Mb/s', 'Jitter ms', 'Time']].concat(shownWalk().map((w) => [w.room, w.ap, w.signal, w.min, w.max, sigWord(w.signal), w.ssid, w.bssid, w.vendor, w.band, w.channel, w.pingMs, w.loss, w.downMbps, w.upMbps, w.jitterMs, w.at]));
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([rows.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')], { type: 'text/csv' })); a.download = `wifi-walk-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
 }
 
@@ -1254,10 +1263,10 @@ $('#dnsGo').onclick = (e) => runTool(e.target, '#dnsOut', async () => { const r 
 $('#wolGo').onclick = (e) => runTool(e.target, '#wolOut', async () => { const r = await api('wol', { mac: $('#wolMac').value.trim() }); return `Magic packet for ${r.mac} sent to ${r.sentTo.join(', ')}`; });
 $('#wGo').onclick = () => (wTimer ? wStop() : wStart());
 $('#walkGo').onclick = walkRecord; $('#walkRoom').addEventListener('keydown', (e) => { if (e.key === 'Enter') walkRecord(); });
-$('#walkCsv').onclick = walkCsv;
+$('#walkCsv').onclick = walkCsv; $('#walkSpeed').checked = store.get('walkSpeed', true); $('#walkSpeed').onchange = (e) => store.set('walkSpeed', e.target.checked);
 $('#walkClear').onclick = () => { if (!walk.length || reviewWalk) return; if (!confirm(`Clear all ${walk.length} readings?`)) return; walk = []; store.set('walk', walk); renderWalk(); };
 $('#survGo').onclick = runSurvey; $('#survMine').onchange = renderSurvey; $('#survQ').oninput = renderSurvey;
-WifiMap.init({ $, esc, toast, rest, sbHeaders, sbUrl: SB_URL, api, loadScript, sigHex, mode: () => mode, getPlan: () => plan,
+WifiMap.init({ $, esc, toast, rest, sbHeaders, sbUrl: SB_URL, api, loadScript, sigHex, mbHex, mode: () => mode, getPlan: () => plan,
   getWalk: shownWalk, setWalk: (w) => { walk = w; store.set('walk', walk); renderWalk(); }, currentProject: () => $('#projPick').value || qs.get('pid') || (() => { try { return localStorage.getItem('sonor_active_project_id') || ''; } catch { return ''; } })() || store.get('project', ''),
   who: () => (AUTH.user() || {}).email || (window.SonorAccess && SonorAccess.user && SonorAccess.user.email) || '', markReviewed: (summary, applied) => markReviewed(summary, applied),
   endReview: () => { reviewWalk = null; renderWalk(); } });

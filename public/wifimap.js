@@ -23,7 +23,7 @@
   var AP_MODELS = [['WAP-CEIL', 'Ceiling AP'], ['WAP-WALL', 'Wall AP'], ['AP-OUT', 'Outdoor AP']];
   var TARGET = -67;                     // dBm: good enough for calls and streaming everywhere
   var S = load();                       // { source, projectId, projectName, floors[], floorId, proposals[], links{}, upload{img,scale}, model{} }
-  var view = { tool: 'stand', heat: 'measured', pos: null, moving: null, scaleA: null, review: null, img: null, imgFor: null, t: null };
+  var view = { tool: 'stand', heat: 'compare', pos: null, moving: null, scaleA: null, review: null, img: null, imgFor: null, t: null };
   var cv = null, ctx2 = null;
 
   function blank() { return { source: null, projectId: null, projectName: '', floors: [], floorId: null, proposals: [], links: {}, upload: null }; }
@@ -209,7 +209,9 @@
       var lx = Math.min.apply(null, a.points.map(function (q) { return q.x; })), ly = Math.min.apply(null, a.points.map(function (q) { return q.y; })); g.font = '500 ' + (fs * 0.85) + 'px DM Sans, sans-serif'; g.textAlign = 'left'; g.fillStyle = view.img ? 'rgba(20,20,24,.7)' : 'rgba(245,245,247,.55)'; g.fillText(a.name || a.code || '', X(lx) + 4, Y(ly) + fs); });
     var links = allLinks(); var linkedUids = new Set(Object.keys(links).map(function (k) { return links[k]; }));
     apsNow(fl).forEach(function (a) { drawAp(g, a, X(a.x), Y(a.y), fs, linkedUids.has(a.uid)); if (a.moved) { g.setLineDash([4, 4]); g.strokeStyle = '#4bb9d3'; g.beginPath(); g.moveTo(X(a.moved.x), Y(a.moved.y)); g.lineTo(X(a.x), Y(a.y)); g.stroke(); g.setLineDash([]); } });
-    readings().forEach(function (w) { var x = X(w.wx), y = Y(w.wy); g.fillStyle = C.sigHex(w.signal); g.strokeStyle = '#000'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 6, 0, 7); g.fill(); g.stroke(); label(g, String(w.signal), x, y - 10, fs); });
+    var pred = pxPerM(fl), predAps = apsNow(fl).filter(function (a) { return !a.removed; }), predModel = modelFor(fl); if (!predAps.length) pred = null;
+    readings().forEach(function (w) { var x = X(w.wx), y = Y(w.wy); g.fillStyle = C.sigHex(w.signal); g.strokeStyle = '#000'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, 6, 0, 7); g.fill(); g.stroke(); var dl = ''; if (view.heat === 'compare' && pred) { var dv = Math.round(w.signal - predict(predAps, { x: w.wx, y: w.wy }, pred, predModel, fl)); dl = ' (' + (dv >= 0 ? '+' : '') + dv + ')'; }
+      label(g, view.heat === 'speed' && w.downMbps != null ? '↓' + Math.round(w.downMbps) : String(w.signal) + dl + (w.downMbps != null && view.heat !== 'predicted' ? ' · ↓' + Math.round(w.downMbps) : ''), x, y - 10, fs); });
     if (view.pos && view.pos.floorId === fl.floorId) { var px = X(view.pos.x), py = Y(view.pos.y); g.strokeStyle = '#4bb9d3'; g.lineWidth = 3; g.beginPath(); g.arc(px, py, 12, 0, 7); g.stroke(); g.beginPath(); g.arc(px, py, 3, 0, 7); g.fillStyle = '#4bb9d3'; g.fill(); }
     if (view.scaleA) { g.fillStyle = '#e3a72f'; g.beginPath(); g.arc(X(view.scaleA.x), Y(view.scaleA.y), 5, 0, 7); g.fill(); }
     if (view.moving) { var m = apsNow(fl).find(function (a) { return a.uid === view.moving; }); if (m) { g.strokeStyle = '#e3a72f'; g.lineWidth = 3; g.beginPath(); g.arc(X(m.x), Y(m.y), 16, 0, 7); g.stroke(); } }
@@ -225,16 +227,32 @@
     if (a.removed) { g.strokeStyle = '#e5484d'; g.lineWidth = 3; g.beginPath(); g.moveTo(x - r - 2, y - r - 2); g.lineTo(x + r + 2, y + r + 2); g.moveTo(x + r + 2, y - r - 2); g.lineTo(x - r - 2, y + r + 2); g.stroke(); }
     g.restore(); label(g, a.id || 'AP', x, y + r + fs + 2, fs * 0.9);
   }
+  // compare (default, Bryn: "predicted heatmap vs actual test … default blank, then realworld becomes live as each tested"):
+  // the predicted map is shown faint over the whole floor; around every tested spot (within TESTED_M) the real readings
+  // take over at full strength, so the plan turns from prediction into fact one test at a time.
+  var TESTED_M = 3;
+  function nearest(rs, p) { var d = Infinity; for (var i = 0; i < rs.length; i++) { var x = Math.hypot(rs[i].wx - p.x, rs[i].wy - p.y); if (x < d) d = x; } return d; }
   function heat(g, fl, W, H, X, Y, s) {
     if (view.heat === 'off') return; var cell = 7, ppm = pxPerM(fl), rs = readings(); var mode = view.heat;
-    if (mode === 'measured' && !rs.length) return; if (mode === 'predicted' && (!ppm || !apsNow(fl).some(function (a) { return !a.removed; }))) return;
-    var aps = apsNow(fl).filter(function (a) { return !a.removed; }); var model = modelFor(fl);
-    var maxD = ppm ? 6 * ppm : 220;
+    if (mode === 'speed') rs = rs.filter(function (w) { return w.downMbps != null; }).map(function (w) { return { wx: w.wx, wy: w.wy, signal: w.downMbps }; });
+    var aps = apsNow(fl).filter(function (a) { return !a.removed; }); var model = modelFor(fl); var canPredict = !!ppm && aps.length > 0;
+    if ((mode === 'measured' || mode === 'speed') && !rs.length) return; if (mode === 'predicted' && !canPredict) return; if (mode === 'compare' && !canPredict && !rs.length) return;
+    var maxD = ppm ? 6 * ppm : 220, tested = ppm ? TESTED_M * ppm : 110, faint = view.img ? '38' : '30', solid = view.img ? '78' : '70';
     for (var py = 0; py < H; py += cell) for (var px = 0; px < W; px += cell) {
       var p = { x: (px + cell / 2 - view.t.ox) / s, y: (py + cell / 2 - view.t.oy) / s }; if (!inside(fl, p)) continue;
-      var v = mode === 'measured' ? idw(rs, p, maxD) : predict(aps, p, ppm, model, fl); if (v == null) continue;
-      g.fillStyle = C.sigHex(v) + (view.img ? '70' : '60'); g.fillRect(px, py, cell, cell);
+      if (mode === 'compare') {
+        if (rs.length && nearest(rs, p) <= tested) { var m = idw(rs, p, tested); if (m != null) { g.fillStyle = C.sigHex(m) + solid; g.fillRect(px, py, cell, cell); continue; } }
+        if (canPredict) { g.fillStyle = C.sigHex(predict(aps, p, ppm, model, fl)) + faint; g.fillRect(px, py, cell, cell); }
+        continue;
+      }
+      var v = mode === 'predicted' ? predict(aps, p, ppm, model, fl) : idw(rs, p, maxD); if (v == null) continue;
+      g.fillStyle = (mode === 'speed' ? C.mbHex(v) : C.sigHex(v)) + (view.img ? '70' : '60'); g.fillRect(px, py, cell, cell);
     }
+  }
+  function testedPct(fl) {   // share of the floor within TESTED_M of a reading
+    var ppm = pxPerM(fl), rs = readings(); if (!rs.length) return 0; var b = bounds(fl), st = Math.max(b.w, b.h) / 80, n = 0, t = 0, lim = (ppm || 36) * TESTED_M;
+    for (var y = b.y; y < b.y + b.h; y += st) for (var x = b.x; x < b.x + b.w; x += st) { var p = { x: x, y: y }; if (!inside(fl, p)) continue; n++; if (nearest(rs, p) <= lim) t++; }
+    return n ? Math.round(100 * t / n) : 0;
   }
   function modelFor(fl) { var byUid = {}; (fl.aps || []).forEach(function (a) { byUid[a.uid] = a; }); return calibrate(readings(), byUid, allLinks(), pxPerM(fl) || 40, fl); }
 
@@ -245,18 +263,20 @@
       var xs = a.points.map(function (p) { return p.x; }), ys = a.points.map(function (p) { return p.y; }); var x0 = Math.min.apply(null, xs), x1 = Math.max.apply(null, xs), y0 = Math.min.apply(null, ys), y1 = Math.max.apply(null, ys);
       var st = Math.max(4, (x1 - x0) / 10), ok = 0, n = 0, worst = 0;
       if (ppm && aps.length) for (var y = y0 + st / 2; y < y1; y += st) for (var x = x0 + st / 2; x < x1; x += st) { var p = { x: x, y: y }; if (!inPoly(p, a.points)) continue; var v = predict(aps, p, ppm, model, fl); n++; if (v >= TARGET) ok++; worst = Math.min(worst, v); }
-      var mine = rs.filter(function (w) { return roomAt(fl, { x: w.wx, y: w.wy }) === a; }); var meas = mine.length ? Math.min.apply(null, mine.map(function (w) { return w.signal; })) : null;
-      return { room: a, pct: n ? Math.round(100 * ok / n) : null, worst: n ? Math.round(worst) : null, measured: meas, readings: mine.length };
+      var mine = rs.filter(function (w) { return roomAt(fl, { x: w.wx, y: w.wy }) === a; }); var meas = mine.length ? Math.min.apply(null, mine.map(function (w) { return w.signal; })) : null; var sp = mine.filter(function (w) { return w.downMbps != null; });
+      return { room: a, pct: n ? Math.round(100 * ok / n) : null, worst: n ? Math.round(worst) : null, measured: meas, readings: mine.length, down: sp.length ? Math.min.apply(null, sp.map(function (w) { return w.downMbps; })) : null, up: sp.length ? Math.min.apply(null, sp.map(function (w) { return w.upMbps; })) : null };
     });
   }
-  function word(c) { var v = c.measured != null ? c.measured : c.pct == null ? null : c.pct >= 90 ? 0 : c.pct >= 60 ? -70 : -80; if (v == null) return ['', '—']; return v >= TARGET ? ['ok', 'Good'] : v >= -75 ? ['warn', 'Patchy'] : ['bad', 'Weak']; }
+  function word(c) { var v = c.measured != null ? c.measured : c.pct == null ? null : c.pct >= 90 ? 0 : c.pct >= 60 ? -70 : -80; if (v == null && c.down == null) return ['', '—']; var r = v == null ? 0 : v >= TARGET ? 0 : v >= -75 ? 1 : 2; if (c.down != null) r = Math.max(r, c.down >= 25 ? 0 : c.down >= 10 ? 1 : 2); return [['ok', 'Good'], ['warn', 'Patchy'], ['bad', 'Weak']][r]; }   // a room is only Good if its speed test is too (25 Mb/s = a 4K stream)
   function renderSide() {
     var el = C.$('#wmSide'); if (!el) return; var fl = floor(); if (!fl) { el.innerHTML = ''; return; }
     var ppm = pxPerM(fl), cov = coverage(fl), props = S.proposals.filter(function (p) { return p.floorId === fl.floorId; }); var model = modelFor(fl);
     var h = '<div class="small muted" style="margin-bottom:6px">' + (S.source === 'takeoffs' ? 'Takeoffs · ' + C.esc(S.projectName || '') + ' · ' + C.esc(fl.name) + (fl.planName ? ' · plan ' + C.esc(fl.planName) : view.img ? '' : ' · no plan image, rooms only') : S.source === 'upload' ? 'Own plan' + (S.projectName ? ' · ' + C.esc(S.projectName) : '') + (ppm ? '' : ' · <b style="color:var(--warn)">set the scale</b> for predicted coverage') : 'Grid survey (1 square = 1 m)') + '</div>';
+    if (view.heat === 'compare') { var tp = testedPct(fl); h += '<div class="small muted" style="margin-bottom:6px">Faint colour is the prediction from the APs on the plan; strong colour is where it has been tested (within ' + TESTED_M + ' m of a reading). <b>' + tp + '% of the floor tested</b>' + (readings().length ? '. Each reading shows how far it is from the prediction, e.g. −61 (−6) is 6 dB worse than predicted.' : ': tap where you stand and press Record to start.') + '</div>'; }
+    if (view.heat === 'speed') h += '<div class="small muted" style="margin-bottom:6px">Real-world speed: the download speed tests taken at each spot, spread between them. Green is 100 Mb/s or more, amber under 25 (one 4K stream), red under 10. It is the Wi-Fi and the internet line together, so check the line on its own with Speed test at the top.</div>';
     if (view.heat === 'predicted') h += '<div class="small muted" style="margin-bottom:6px">Prediction: ' + (model.from ? 'calibrated from ' + model.from + ' readings next to known APs' : 'a typical house (walk-test readings next to linked APs calibrate it)') + '. Each wall on the way costs about 5 dB; floors, brick and stone walls are not known, so check with a walk test.</div>';
-    if (cov.length) h += '<table class="wmcov"><tr><th>Room</th><th>Predicted</th><th>Measured</th><th></th></tr>' + cov.map(function (c) { var w = word(c);
-      return '<tr><td>' + C.esc(c.room.name || c.room.code) + '</td><td>' + (c.pct == null ? '<span class="muted">—</span>' : c.pct + '% ≥ ' + TARGET) + '</td><td>' + (c.measured == null ? '<span class="muted">—</span>' : c.measured + ' dBm') + '</td><td>' + (w[0] ? '<span class="pill ' + w[0] + '">' + w[1] + '</span>' : '') + (w[0] && w[0] !== 'ok' && !view.review ? ' <button class="btn-sm" data-wmadd="' + C.esc(c.room.name) + '">+ AP</button>' : '') + '</td></tr>'; }).join('') + '</table>';
+    if (cov.length) h += '<table class="wmcov"><tr><th>Room</th><th>Predicted</th><th>Measured</th><th>Speed</th><th></th></tr>' + cov.map(function (c) { var w = word(c);
+      return '<tr><td>' + C.esc(c.room.name || c.room.code) + '</td><td>' + (c.pct == null ? '<span class="muted">—</span>' : c.pct + '% ≥ ' + TARGET) + '</td><td>' + (c.measured == null ? '<span class="muted">—</span>' : c.measured + ' dBm') + '</td><td>' + (c.down == null ? '<span class="muted">—</span>' : '<span style="color:' + C.mbHex(c.down) + '" title="Slowest speed test in the room, download / upload">↓' + Math.round(c.down) + ' ↑' + Math.round(c.up) + '</span>') + '</td><td>' + (w[0] ? '<span class="pill ' + w[0] + '">' + w[1] + '</span>' : '') + (w[0] && w[0] !== 'ok' && !view.review ? ' <button class="btn-sm" data-wmadd="' + C.esc(c.room.name) + '">+ AP</button>' : '') + '</td></tr>'; }).join('') + '</table>';
     var desc = function (p) { var a = (fl.aps || []).find(function (x) { return x.uid === p.uid; }); var room = roomAt(fl, p); return p.op === 'add' ? 'Add ' + ((AP_MODELS.find(function (m) { return m[0] === p.code; }) || [0, p.code])[1]) + (room ? ' in ' + room.name : '') : p.op === 'move' ? 'Move ' + (a ? a.id : 'AP') + (room ? ' to ' + room.name : '') : 'Remove ' + (a ? a.id : 'AP'); };
     h += '<div class="lbl" style="margin:12px 0 6px">Proposed changes for the office' + (props.length ? ' · ' + props.length : '') + '</div>';
     h += props.length ? props.map(function (p, i) { return '<div class="wrow" style="grid-template-columns:auto 1fr auto">' + (view.review ? '<input type="checkbox" data-wmok="' + i + '" checked>' : '<span></span>') + '<div>' + C.esc(desc(p)) + (p.note ? '<div class="m">' + C.esc(p.note) + '</div>' : '') + (p.by ? '<div class="m">' + C.esc(p.by) + '</div>' : '') + '</div>' + (view.review ? '<span></span>' : '<button class="btn-sm" data-wmdel="' + C.esc(p.uid + p.op) + '">✕</button>') + '</div>'; }).join('') : '<p class="muted small" style="margin:0">None. Use Add AP, Move AP or Remove AP on the plan. Nothing changes in Takeoffs until the office approves it.</p>';
@@ -348,7 +368,9 @@
   async function loadDemo() {
     var d = await (await fetch('data/demo-floors.json')).json();
     S = Object.assign(blank(), { source: 'takeoffs', projectId: 'demo', projectName: d.name, floors: d.floors, floorId: d.floors[0].floorId, templates: {} }); save();
-    if (!C.getWalk().some(function (w) { return w.wx != null; })) C.setWalk(C.getWalk().concat(d.readings || []));
+    // starts blank: the prediction shows straight away and each spot the engineer stands on and tests fills in live.
+    // (older versions pre-loaded demo readings sitting on the APs; drop those)
+    var old = {}; (d.readings || []).forEach(function (r) { old[r.at] = 1; }); var w0 = C.getWalk(); var w1 = w0.filter(function (w) { return !old[w.at]; }); if (w1.length !== w0.length) C.setWalk(w1);
     fillFloors(); await loadImage();
   }
   function setTool(t) { view.tool = t; view.moving = null; view.scaleA = null; C.$('#wmTools').querySelectorAll('button').forEach(function (b) { b.classList.toggle('on', b.dataset.tool === t); }); C.$('#wmTip').textContent = { stand: 'Tap where you are standing, then Record', add: 'Tap where a new AP should go', move: 'Tap an AP, then where it should go', remove: 'Tap an AP to propose removing it', link: 'Stand under an AP and tap it to link the radio you are on', scale: 'Tap both ends of something you know the length of' }[t] || ''; draw(); }
@@ -369,6 +391,7 @@
   }
   var api = {
     init: init, draw: draw, exportPlan: exportPlan, openReview: openReview, fillProjects: fillProjects,
+    simAt: function (p) { var fl = floor(); if (!fl || !p) return null; var ppm = pxPerM(fl) || 40, m = modelFor(fl), best = null; apsNow(fl).filter(function (a) { return !a.removed; }).forEach(function (a) { var v = predict([a], p, ppm, m, fl); if (!best || v > best.v) best = { v: v, ap: a.id }; }); if (!best) return null; return { signal: Math.round(best.v + (Math.random() * 8 - 5)), ap: best.ap }; },
     pos: function () { return view.pos; }, clearPos: function () { view.pos = null; C.$('#wmTip').textContent = ''; draw(); },
     roomFor: function (p) { var fl = floor(); var r = fl && roomAt(fl, p); return r ? r.name : ''; },
     apFor: function (bssid) { var a = apForBssid(bssid); if (!a) return null; var fl = floor(); var ap = fl && (fl.aps || []).find(function (x) { return x.uid === a.uid; }); return ap ? { id: ap.id, how: a.how } : null; },
