@@ -1,4 +1,4 @@
-# Sonor Zigbee Probe (ESP32-C6), v1.0.0
+# Sonor Zigbee Probe (ESP32-C6 or ESP32-H2), v1.1.0
 
 A receive-only Zigbee meter you hold at a Control4 keypad, a Heatmiser neoStat or a Hue bulb. The Network Scanner's
 **Zigbee tab** finds it on the network by itself and uses it three ways:
@@ -28,6 +28,8 @@ It makes a hotspot **Sonor-ZB-Probe** (password `sonorprobe`). Join it, open htt
 It restarts on the site Wi-Fi and appears in the Zigbee tab's probe dropdown (`_sonor-zb._tcp`).
 
 ## Limits
-- The C6 shares one radio between Wi-Fi and 802.15.4, so it misses a few frames while Wi-Fi talks.
+- The C6 shares one radio between Wi-Fi and 802.15.4: it never scans Wi-Fi during a sweep or meter (Espressif rates that unstable). For an always-on meter an ESP32-H2 with an Ethernet or USB link is cleaner (research zbm.hw.choice).
+- Meshes whose beacon has no Zigbee payload are reported as Thread (Thread 1.2.1+, Lutron Type X); the scanner names them from the Thread border router on the LAN (`_meshcop._udp`).
+- Noise sweep: 8 windows of 8 ms per channel, max (bursts) and median (background). Grades: clear below -85 dBm, busy -85 to -70, bad above -70; a channel whose median is within 10 dB of the weakest node fails.
 - It hears node short addresses, not names: names come from the Takeoffs wireless plan once that module exists.
 - Not yet tested on hardware.

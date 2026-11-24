@@ -1,4 +1,4 @@
-/* Sonor Zigbee Probe v1.0.0 (2026-11-24): an ESP32-C6 you hold at a keypad, thermostat or bulb. Receive only.
+/* Sonor Zigbee Probe v1.1.0 (2026-11-24): an ESP32-C6 you hold at a keypad, thermostat or bulb. Receive only.
  * It listens on the 802.15.4 radio (Zigbee / Thread, channels 11–26) and serves the Network Scanner's Zigbee tab:
  *   GET /scan            → finds the meshes: a beacon request on every channel, each coordinator / router that answers
  *                          { v, meshes:[{ ch, pan, ext, addr, permitJoin, rssi, lqi, n }] }  (ext = extended PAN id, its
@@ -14,25 +14,28 @@
  *
  * Board: ESP32-C6 DevKitC-1 (or Seeed XIAO ESP32C6, which has an external antenna socket). Arduino-ESP32 core 3.1 or
  * later, board "ESP32C6 Dev Module". No libraries beyond the core: it uses Espressif's esp_ieee802154 driver directly.
- * The C6 shares one radio between Wi-Fi and 802.15.4 (time-sliced coexistence), so a few frames are missed while Wi-Fi
- * talks; the probe keeps its Wi-Fi traffic to the scanner's polls. NOT YET TESTED ON HARDWARE.
+ * The C6 shares one radio between Wi-Fi and 802.15.4: it never scans Wi-Fi while it sweeps or listens (Espressif rates that
+ * unstable, research zbm.hw.choice); an ESP32-H2 is the cleaner chip for an always-on meter. Mesh beacons with no Zigbee
+ * payload are reported as kind "thread" (Thread 1.2.1+, Lutron Type X); name them from _meshcop._udp on the LAN.
+ * Research: zbm.api.rx / zbm.api.ed / zbm.beacon.* in wifi-rf-rules.json. NOT YET TESTED ON HARDWARE.
  */
 #include <WiFi.h>
 #include <WebServer.h>
 #include <ESPmDNS.h>
 #include <Preferences.h>
+#include <algorithm>
 extern "C" {
 #include "esp_ieee802154.h"
 }
 
-#define VERSION "1.0.0"
+#define VERSION "1.1.0"
 #define PIN_BATT 0             // optional: battery via 2 × 100k divider to GPIO0; reads 0 when not fitted
 #define MAXN 64
 
 WebServer http(80);
 Preferences prefs;
 
-struct Node { uint16_t pan; uint8_t mode; uint8_t a[8]; int8_t rssi; uint8_t lqi; uint32_t n; uint32_t at; bool permit; uint8_t ext[8]; bool hasExt; uint8_t ch; };
+struct Node { uint16_t pan; uint8_t mode; uint8_t a[8]; int8_t rssi; uint8_t lqi; uint32_t n; uint32_t at; bool permit; uint8_t ext[8]; bool hasExt; uint8_t ch; bool beacon; uint8_t stack; };
 Node nodes[MAXN]; volatile int nn = 0; volatile uint32_t frames = 0;
 volatile int8_t edPower = -127; volatile bool edDone = false;
 uint8_t curCh = 25; bool scanning = false;
@@ -46,36 +49,44 @@ static Node* nodeFor(uint16_t pan, uint8_t mode, const uint8_t* a) {
   Node* x = &nodes[nn++]; memset(x, 0, sizeof *x); x->pan = pan; x->mode = mode; memcpy(x->a, a, len); x->rssi = -127; return x;
 }
 
+// The receive callback runs in the ISR: copy the frame into a ring and hand the buffer back at once
+// (esp_ieee802154_receive_handle_done is required since IDF 5.1.3 or receiving stops). loop() parses the ring.
+struct Rx { uint8_t f[128]; int8_t rssi; uint8_t lqi; uint8_t ch; };
+#define RXQ 32
+Rx rxq[RXQ]; volatile uint8_t rxHead = 0, rxTail = 0;
 extern "C" void esp_ieee802154_receive_done(uint8_t* frame, esp_ieee802154_frame_info_t* info) {
-  // frame[0] = PHY length (incl. 2-byte FCS), MAC header starts at frame[1]
-  uint8_t len = frame[0]; const uint8_t* p = frame + 1; const uint8_t* end = frame + 1 + (len > 2 ? len - 2 : 0);
+  uint8_t next = (rxHead + 1) % RXQ;
+  if (next != rxTail) { Rx& r = rxq[rxHead]; uint8_t len = frame[0] < 127 ? frame[0] : 127; memcpy(r.f, frame, len + 1); r.rssi = info->rssi; r.lqi = info->lqi; r.ch = curCh; rxHead = next; }
   frames++;
-  if (len >= 5) {
-    uint16_t fc = p[0] | (p[1] << 8); uint8_t type = fc & 7; bool panComp = fc & (1 << 6);
-    uint8_t dm = (fc >> 10) & 3, sm = (fc >> 14) & 3; const uint8_t* q = p + 3; uint16_t dpan = 0, span = 0;
-    if (dm) { dpan = q[0] | (q[1] << 8); q += 2; q += dm == 3 ? 8 : 2; }
-    if (sm) {
-      if (!panComp) { span = q[0] | (q[1] << 8); q += 2; } else span = dpan;
-      const uint8_t* src = q; q += sm == 3 ? 8 : 2;
-      if (q <= end) {
-        portENTER_CRITICAL_ISR(&mux);
-        Node* x = nodeFor(span, sm, src);
-        if (x) { x->n++; x->at = millis(); x->ch = curCh; x->lqi = info->lqi;
-          x->rssi = x->rssi == -127 ? info->rssi : (int8_t)((x->rssi * 3 + info->rssi) / 4);   // smoothed
-          if (type == 0 && q + 4 <= end) {                       // beacon: superframe(2) GTS(1+) pending(1+) payload
-            uint16_t sf = q[0] | (q[1] << 8); x->permit = sf & 0x8000; const uint8_t* b = q + 2;
-            uint8_t gts = b[0] & 7; b += 1 + (gts ? 1 + gts * 3 : 0);
-            if (b < end) { uint8_t pend = b[0]; b += 1 + (pend & 7) * 2 + ((pend >> 4) & 7) * 8; }
-            if (b + 10 <= end && b[0] == 0) { memcpy(x->ext, b + 2, 8); x->hasExt = true; }   // Zigbee: protocol id 0, ext PAN at +2
-          } }
-        portEXIT_CRITICAL_ISR(&mux);
-      }
-    }
-  }
   esp_ieee802154_receive_handle_done(frame);
+}
+void parse(const Rx& r) {
+  // f[0] = PSDU length (the last 2 bytes are FCS / RSSI+LQI), MAC header starts at f[1]
+  uint8_t len = r.f[0]; const uint8_t* p = r.f + 1; const uint8_t* end = r.f + 1 + (len > 2 ? len - 2 : 0);
+  if (len < 5) return;
+  uint16_t fc = p[0] | (p[1] << 8); uint8_t type = fc & 7; bool panComp = fc & (1 << 6);
+  uint8_t dm = (fc >> 10) & 3, sm = (fc >> 14) & 3; const uint8_t* q = p + 3; uint16_t dpan = 0, span = 0;
+  if (dm) { dpan = q[0] | (q[1] << 8); q += 2; q += dm == 3 ? 8 : 2; }
+  if (!sm) return;
+  if (!panComp) { span = q[0] | (q[1] << 8); q += 2; } else span = dpan;
+  const uint8_t* src = q; q += sm == 3 ? 8 : 2; if (q > end) return;
+  portENTER_CRITICAL(&mux);
+  Node* x = nodeFor(span, sm, src);
+  if (x) { x->n++; x->at = millis(); x->ch = r.ch; x->lqi = r.lqi;
+    x->rssi = x->rssi == -127 ? r.rssi : (int8_t)((x->rssi * 3 + r.rssi) / 4);   // smoothed
+    if (type == 0 && q + 2 <= end) {                       // beacon: superframe(2) GTS(1+) pending(1+) payload
+      x->beacon = true; uint16_t sf = q[0] | (q[1] << 8); x->permit = sf & 0x8000; const uint8_t* b = q + 2;
+      if (b < end) { uint8_t gts = b[0] & 7; b += 1 + (gts ? 1 + gts * 3 : 0); }
+      if (b < end) { uint8_t pend = b[0]; b += 1 + (pend & 7) * 2 + ((pend >> 4) & 7) * 8; }
+      // Zigbee beacon payload: protocol id 0, stack profile, …, ext PAN at +3 (Thread 1.2.1+ beacons carry no payload)
+      if (b + 11 <= end && b[0] == 0) { x->stack = b[1] & 0x0F; memcpy(x->ext, b + 3, 8); x->hasExt = true; }
+    } }
+  portEXIT_CRITICAL(&mux);
 }
 extern "C" void esp_ieee802154_energy_detect_done(int8_t power) { edPower = power; edDone = true; }
 
+void drainRx() { while (rxTail != rxHead) { parse(rxq[rxTail]); rxTail = (rxTail + 1) % RXQ; } }
+void drainFor(unsigned long ms) { unsigned long t = millis(); while (millis() - t < ms) { drainRx(); delay(1); } }
 void listenOn(uint8_t ch) { curCh = ch; esp_ieee802154_set_channel(ch); esp_ieee802154_receive(); }
 
 void beaconRequest() {   // MAC command frame, dst broadcast PAN/addr, no src: FC 0x0803, seq, 0xFFFF, 0xFFFF, cmd 0x07
@@ -92,12 +103,12 @@ String addrOf(const Node& x) { if (x.mode == 3) return hex(x.a, 8, true); char b
 void onScan() {
   cors(); scanning = true;
   portENTER_CRITICAL(&mux); nn = 0; portEXIT_CRITICAL(&mux);
-  for (uint8_t ch = 11; ch <= 26; ch++) { listenOn(ch); beaconRequest(); delay(120); beaconRequest(); delay(130); }
+  for (uint8_t ch = 11; ch <= 26; ch++) { listenOn(ch); beaconRequest(); drainFor(120); beaconRequest(); drainFor(160); }   // ~280 ms per channel
   String j = "{\"v\":\"" VERSION "\",\"meshes\":[";
   bool first = true;
-  for (int i = 0; i < nn; i++) { const Node& x = nodes[i]; if (!x.hasExt && !x.permit && x.n < 1) continue;
+  for (int i = 0; i < nn; i++) { const Node& x = nodes[i]; if (!x.beacon) continue;   // only coordinators / routers that answered
     char b[64]; snprintf(b, sizeof b, "%s{\"ch\":%u,\"pan\":\"0x%04X\",", first ? "" : ",", x.ch, x.pan); j += b; first = false;
-    j += "\"ext\":\"" + (x.hasExt ? hex(x.ext, 8, true) : String("")) + "\",\"addr\":\"" + addrOf(x) + "\",";
+    j += "\"ext\":\"" + (x.hasExt ? hex(x.ext, 8, true) : String("")) + "\",\"addr\":\"" + addrOf(x) + "\",\"kind\":\"" + (x.hasExt ? "zigbee" : "thread") + "\",";
     snprintf(b, sizeof b, "\"permitJoin\":%s,\"rssi\":%d,\"lqi\":%u,\"n\":%u}", x.permit ? "true" : "false", x.rssi, x.lqi, x.n); j += b; }
   j += "]}";
   portENTER_CRITICAL(&mux); nn = 0; portEXIT_CRITICAL(&mux);
@@ -105,12 +116,13 @@ void onScan() {
   http.send(200, "application/json", j);
 }
 
-void onEnergy() {
+void onEnergy() {   // 8 × 8 ms energy-detect windows per channel (500 symbols of 16 µs); report max (bursts) and median (background)
   cors(); String j = "{\"v\":\"" VERSION "\",\"energy\":[";
   for (uint8_t ch = 11; ch <= 26; ch++) {
-    esp_ieee802154_set_channel(ch); int8_t worst = -127;
-    for (int k = 0; k < 4; k++) { edDone = false; esp_ieee802154_energy_detect(10); unsigned long t = millis(); while (!edDone && millis() - t < 50) delay(1); if (edDone && edPower > worst) worst = edPower; }
-    char b[40]; snprintf(b, sizeof b, "%s{\"ch\":%u,\"dbm\":%d}", ch == 11 ? "" : ",", ch, worst); j += b;
+    esp_ieee802154_set_channel(ch); int8_t s8[8]; int n = 0;
+    for (int k = 0; k < 8; k++) { edDone = false; esp_ieee802154_energy_detect(500); unsigned long t = millis(); while (!edDone && millis() - t < 30) delay(1); if (edDone) s8[n++] = edPower; }
+    std::sort(s8, s8 + n); int mx = n ? s8[n - 1] : -127, md = n ? s8[n / 2] : -127;
+    char b[60]; snprintf(b, sizeof b, "%s{\"ch\":%u,\"dbm\":%d,\"median\":%d}", ch == 11 ? "" : ",", ch, mx, md); j += b;
   }
   j += "]}"; listenOn(curCh); http.send(200, "application/json", j);
 }
@@ -119,7 +131,7 @@ void onListen() {
   cors();
   if (http.hasArg("ch")) { int c = http.arg("ch").toInt(); if (c >= 11 && c <= 26 && c != curCh) { portENTER_CRITICAL(&mux); nn = 0; portEXIT_CRITICAL(&mux); prefs.putUChar("ch", c); listenOn(c); } }
   if (http.hasArg("reset")) { portENTER_CRITICAL(&mux); nn = 0; portEXIT_CRITICAL(&mux); }
-  int8_t now = esp_ieee802154_get_recent_rssi();
+  drainRx(); int8_t now = esp_ieee802154_get_recent_rssi();
   String j; char b[220];
   snprintf(b, sizeof b, "{\"v\":\"%s\",\"ch\":%u,\"rssi\":%d,\"frames\":%u,\"uptime\":%lu,\"battery\":%d,\"ssid\":\"%s\",\"wifiRssi\":%d,\"nodes\":[",
     VERSION, curCh, now, frames, millis() / 1000, battery(), WiFi.SSID().c_str(), WiFi.RSSI());
@@ -151,4 +163,4 @@ void setup() {
   http.begin();
 }
 
-void loop() { http.handleClient(); delay(2); }
+void loop() { drainRx(); http.handleClient(); delay(1); }

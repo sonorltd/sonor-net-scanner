@@ -382,7 +382,7 @@ a { color: var(--accent-c); }
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = '1.6.6';
+const APP_VERSION = '1.6.7';
 const HOSTED_URL = 'https://apps.sonor.co.uk/sonor-net-scanner/';
 if (window.SonorHeader) {
   SonorHeader.init({ appName: 'Network Scanner', repo: 'sonor-net-scanner' });
@@ -468,10 +468,12 @@ async function demoApi(action, data = {}) {
     case 'netinfo': await sleep(data.fresh ? 1800 : 300); return DEMO_INFO();
     case 'speedtest': await sleep(4000); return { at: new Date().toISOString(), downMbps: 71.4, upMbps: 18.2, latencyMs: 9, jitterMs: 1.4, server: 'speed.cloudflare.com' };
     case 'wifiSurvey': { await sleep(2200); const r = await fetch('data/demo-wifi.json'); const j = await r.json(); j.at = new Date().toISOString(); return j; }
+    case 'neoHubSystem': { await sleep(300); return { channel: 15, field: 'ZIGBEE_CHANNEL', firmware: '2153', raw: {} }; }
+    case 'hueZigbee': { await sleep(300); if (!data || !data.key) { demo.huePress = (demo.huePress || 0) + 1; if (demo.huePress < 2) return { needButton: true, error: 'link button not pressed' }; return { key: 'demo-key', channel: 11, bridgeid: 'ECB5FAFFFE012345' }; } return { key: data.key, channel: 11 }; }
     case 'zbProbe': {
       const op = data && data.op; demo.zb = demo.zb || { ch: 25, frames: 0 };
-      if (op === 'scan') { await sleep(2500); return { v: '1.0.0', meshes: [{ ch: 25, pan: '0x5C41', ext: '00:0F:FF:00:12:9A:4C:01', addr: '0x0000', permitJoin: false, rssi: -61, lqi: 212, n: 2 }, { ch: 11, pan: '0x8E2D', ext: '00:17:88:01:0B:44:2F:90', addr: '0x0000', permitJoin: false, rssi: -70, lqi: 180, n: 2 }, { ch: 15, pan: '0x1F07', ext: 'CC:CC:CC:FF:FE:7A:31:52', addr: '0x0000', permitJoin: false, rssi: -78, lqi: 150, n: 1 }] }; }
-      if (op === 'energy') { await sleep(1200); return { v: '1.0.0', energy: ZB.map((c) => ({ ch: c, dbm: c === 20 || c === 21 ? -68 - Math.round(Math.random() * 4) : c < 15 ? -82 - Math.round(Math.random() * 4) : -91 - Math.round(Math.random() * 5) })) }; }
+      if (op === 'scan') { await sleep(2500); return { v: '1.0.0', meshes: [{ ch: 25, pan: '0x5C41', ext: '00:0F:FF:00:12:9A:4C:01', addr: '0x0000', permitJoin: false, rssi: -61, lqi: 212, n: 2 }, { ch: 11, pan: '0x8E2D', ext: '00:17:88:01:0B:44:2F:90', addr: '0x0000', permitJoin: false, rssi: -70, lqi: 180, n: 2 }, { ch: 15, pan: '0x1F07', ext: 'CC:CC:CC:FF:FE:7A:31:52', addr: '0x0000', permitJoin: true, rssi: -78, lqi: 150, n: 1, kind: 'zigbee' }, { ch: 26, pan: '0x7A11', ext: '', addr: '0x4C00', permitJoin: false, rssi: -72, lqi: 170, n: 2, kind: 'thread' }] }; }
+      if (op === 'energy') { await sleep(1200); return { v: '1.0.0', energy: ZB.map((c) => { const mx = c === 20 || c === 21 ? -66 - Math.round(Math.random() * 4) : c < 15 ? -80 - Math.round(Math.random() * 4) : -90 - Math.round(Math.random() * 5); return { ch: c, dbm: mx, median: mx - 8 - Math.round(Math.random() * 4) }; }) }; }
       await sleep(50); if (data && data.ch) demo.zb.ch = Number(data.ch); demo.zb.frames += 3 + Math.round(Math.random() * 5);
       const base = { 25: [['0x4A1C', -58], ['0x91E0', -71], ['0x0000', -79], ['0x22B3', -86]], 11: [['0x0001', -66], ['0x7731', -80]], 15: [['0x0000', -74], ['0x3F12', -83], ['0x5A09', -90]] }[demo.zb.ch] || [];
       return { v: '1.0.0', ch: demo.zb.ch, rssi: -92 + Math.round(Math.random() * 4), frames: demo.zb.frames, uptime: 600, battery: 3950, ssid: 'Sonor-Demo', wifiRssi: -54, nodes: base.map(([a, r], i) => ({ addr: a, pan: '0x5C41', rssi: r + Math.round(Math.random() * 6 - 3), lqi: Math.max(40, 255 + (r + 50) * 4), n: 10 + i * 3, agoMs: Math.round(Math.random() * 3000) })) };
@@ -1267,7 +1269,7 @@ async function runSurvey() {
 // What the tablet can see is the Wi-Fi on top of each one; real non-Wi-Fi noise (Bluetooth, microwaves, video senders,
 // the Zigbee mesh itself) needs an 802.15.4 radio doing an energy scan (Engineer Toolkit: ESP32-C6 / H2).
 // Wireless maths, mesh systems, hub guidance, grades and probe paths: the shared workspace module data/sonor-wireless.js
-const { ZB, ZB_C4, zbFreq, wifiFreq24, rfW, zigbeeLoad, ZB_SYS, ZB_LEVELS, zbVerdict, ZB_OUI, zbMaker, RF_GUIDE, RF_LEVELS, rfVerdict, RF_FREQS, rfFreqFor, isProbe } = SonorWireless;
+const { ZB, ZB_C4, zbFreq, wifiFreq24, rfW, zigbeeLoad, ZB_SYS, ZB_LEVELS, zbVerdict, ZB_OUI, zbMaker, ZB_ENERGY, energyVerdict, autoMatch, RF_GUIDE, RF_LEVELS, rfVerdict, RF_FREQS, rfFreqFor, isProbe } = SonorWireless;
 SonorWireless.loadRules('data/wifi-rf-rules.json');
 const zbHex = (d) => (d == null ? '#2fbf71' : d < -80 ? '#7cc95a' : d < -70 ? '#e3a72f' : d < -60 ? '#e5784d' : '#e5484d');
 function drawZigbee(canvas, load, used) { used = used || [];
@@ -1281,6 +1283,30 @@ function drawZigbee(canvas, load, used) { used = used || [];
 let zbMesh = store.get('zbMesh', null) || { c4: store.get('zbCh', '') };
 let zbFoundList = store.get('zbFound', []); let zbEnergy = store.get('zbEnergy', null); let zbLog = store.get('zbLog', []);
 let zbTimer = null, zbHist = [], zbLast = null, zbAutoDone = false;
+let zbLan = store.get('zbLan', {}); let hueKeys = store.get('hueKeys', {});   // channels read from the hubs; Hue app keys per bridge
+const zbDevs = () => (scanData && scanData.devices) || [];
+const threadNets = () => zbDevs().flatMap((d) => (d.services || []).filter((x) => x.type === '_meshcop._udp').map((x) => ({ ...(x.txt || {}), ip: d.ip }))).filter((t) => t.nn || t.xp);
+const zbProjectId = () => (typeof $ === 'function' && $('#projPick') && $('#projPick').value) || activeProject() || '';
+// Fill an empty system from a hub-read channel (never overwrite a choice already made)
+function zbSetFromLan(sys, ch, how) { if (!ch) return false; zbLan[sys] = ch; store.set('zbLan', zbLan); if (zbMesh[sys] && String(zbMesh[sys]) !== String(ch)) { toast(`${ZB_SYS.find((x) => x.k === sys).name}: the hub says channel ${ch}, the page had ${zbMesh[sys]} · updated`); } zbMesh[sys] = String(ch); store.set('zbMesh', zbMesh); renderZbMeshes(); renderZbMeterCh(); return true; }
+async function zbReadHubs() {   // zbm.auto.flow step 2: channels over the LAN, no typing
+  const out = [];
+  for (const d of zbDevs().filter((x) => /heatmiser/i.test(x.make))) { try { const r = await api('neoHubSystem', { ip: d.ip }); if (r.channel && zbSetFromLan('neo', r.channel)) out.push(`Heatmiser ch ${r.channel}`); else d._neoNote = 'The neoHub answered but gave no channel.'; } catch (e) { d._neoNote = e.message; } }
+  for (const d of zbDevs().filter((x) => /hue bridge/i.test(x.kind))) { const k = hueKeys[d.ip]; if (!k) { d._hueNote = 'Press the bridge button, then Read Hue channel.'; continue; } try { const r = await api('hueZigbee', { ip: d.ip, key: k }); if (r.channel && zbSetFromLan('hue', r.channel)) out.push(`Hue ch ${r.channel}`); else if (r.needButton) d._hueNote = 'The saved key no longer works: press the bridge button, then Read Hue channel.'; } catch (e) { d._hueNote = e.message; } }
+  if (out.length) toast('Read from the hubs: ' + out.join(' · '));
+  if (survey) renderSurvey(); else renderZigbee();
+}
+async function zbHuePair(ip) {
+  try { const r = await api('hueZigbee', { ip }); if (r.needButton) return toast('Press the round button on the Hue bridge, then tap Read Hue channel again within 30 s', true);
+    hueKeys[ip] = r.key; store.set('hueKeys', hueKeys); zbDevs().filter((d) => d.ip === ip).forEach((d) => { d._hueNote = ''; }); if (r.channel) zbSetFromLan('hue', r.channel); toast(`Hue bridge paired${r.channel ? ' · Zigbee channel ' + r.channel : ''}`); if (survey) renderSurvey(); else renderZigbee();
+  } catch (e) { toast(e.message, true); }
+}
+async function zbFromProject() {   // channels saved with this project's last upload (Control4 has no LAN source: zbm.lan.control4)
+  const pid = zbProjectId(); if (!pid || mode === 'demo' || ZB_SYS.some((x) => zbMesh[x.k])) return;
+  try { const rows = await rest(`/net_scans?project_id=eq.${pid}&select=netinfo->zigbee,scanned_at&order=scanned_at.desc&limit=5`); const z = (rows || []).map((r) => r.zigbee).find((x) => x && x.meshes && x.meshes.length);
+    if (z) { for (const m of z.meshes) if (!zbMesh[m.system]) zbMesh[m.system] = String(m.channel); store.set('zbMesh', zbMesh); renderZbMeshes(); renderZbMeterCh(); toast('Zigbee channels from this project\'s last scan'); if (survey) renderSurvey(); else renderZigbee(); }
+  } catch { /* offline or not signed in: the probe or the lists still work */ }
+}
 const zbMeshName = (ch, pan) => { const f = zbFoundList.find((m) => (pan ? m.pan === pan : m.ch === ch)); const u = zbUsed().filter((m) => m.ch === (f ? f.ch : ch)); return u.length ? u.map((m) => m.name).join(' + ') : f ? 'PAN ' + f.pan : ''; };
 // ── dropdown helpers: spots come from the Takeoffs plan rooms, the walk test and the devices found; typing is the last option ──
 function spotOptions() {
@@ -1325,9 +1351,9 @@ async function zbFind(quiet) {
   const b = $('#zbFind'); b.disabled = true; b.textContent = 'Listening on 11–26…';
   try { const r = await api('zbProbe', { ip: zbIp(), op: 'scan' }); zbFoundList = (r.meshes || []).filter((m) => m.ext || m.permitJoin || m.n).reduce((a, m) => { const o = a.find((x) => x.pan === m.pan && x.ch === m.ch); if (!o) a.push(m); else if (m.rssi > o.rssi) Object.assign(o, m); return a; }, []);
     store.set('zbFound', zbFoundList);
-    // auto-fill: maker from the extended PAN id's OUI; a neoHub in the scan claims an unknown mesh; never overwrite a channel already set
-    const hasNeo = ((scanData && scanData.devices) || []).some((d) => /heatmiser/i.test(d.make)); let filled = 0;
-    for (const m of zbFoundList) { if (zbUsed().some((u) => u.ch === m.ch)) continue; const mk = zbMaker(m); const sys = mk ? mk.sys : hasNeo && !zbMesh.neo ? 'neo' : 'other'; if (!zbMesh[sys]) { zbMesh[sys] = String(m.ch); m.sys = sys; filled++; } }
+    // auto-match (zbm.auto.flow): a channel read from the hub wins, then Thread by ext PAN, then the maker code; never overwrite a choice
+    zbFoundList = autoMatch(zbFoundList, zbLan, threadNets()); store.set('zbFound', zbFoundList); let filled = 0;
+    for (const m of zbFoundList) { if (!m.sys || zbUsed().some((u) => u.ch === m.ch)) continue; if (!zbMesh[m.sys]) { zbMesh[m.sys] = String(m.ch); filled++; } }
     store.set('zbMesh', zbMesh); renderZbMeshes(); renderZbMeterCh(); if (survey) renderSurvey(); else renderZigbee();
     toast(`${zbFoundList.length} Zigbee mesh${zbFoundList.length === 1 ? '' : 'es'} heard${filled ? ` · ${filled} channel${filled > 1 ? 's' : ''} filled in` : ''}`);
   } catch (e) { if (!quiet) toast(e.message, true); }
@@ -1363,7 +1389,8 @@ function renderZbLog() {
 async function zbAuto() {   // opening the tab: survey the Wi-Fi if none yet, and ask the probe for the meshes once
   fillZbProbe(); renderZbMeterCh(); fillSpot('zbSpot'); renderZbLog();
   if (!survey && !$('#zbGo').disabled) $('#zbGo').click();
-  if (!zbAutoDone && zbIp() && !zbFoundList.length) { zbAutoDone = true; zbFind(true); }
+  if (!zbAutoDone) { zbFromProject(); zbReadHubs(); }
+  if (!zbAutoDone) { zbAutoDone = true; if (zbIp() && !zbFoundList.length) setTimeout(() => zbFind(true), 600); }
 }
 const zbUsed = () => ZB_SYS.map((x) => ({ ...x, ch: Number(zbMesh[x.k]) || null })).filter((m) => m.ch >= 11 && m.ch <= 26);
 function renderZbMeshes() {
@@ -1399,8 +1426,11 @@ function renderZigbee() {
     if (m.pref && !m.pref.includes(m.ch)) flags.push(['warn', `${m.name} on ${m.ch}`, `${m.name} recommends ${m.pref.join(', ')}.`]);
     if (survey && z && z.dbm != null && z.dbm >= -75) flags.push([z.dbm >= -65 ? 'bad' : 'warn', `Wi-Fi on top of ${m.name} (ch ${m.ch}, ${z.dbm} dBm)`, `${why(z)}. ${free[0] ? `Quietest free channel here: ${free[0].ch}.` : ''}`]); }
   if (w1213.length && taken.has(25)) flags.push(['warn', 'Wi-Fi on 12/13 next to Zigbee 25', `${w1213.slice(0, 2).map((n) => esc(n.ssid || 'hidden')).join(', ')}: keep site Wi-Fi on 1, 6 or 11.`]);
-  if (zbEnergy && zbEnergy.ch) for (const m of used) { const e = zbEnergy.ch.find((q) => q.ch === m.ch); if (e && e.dbm >= -75) flags.push([e.dbm >= -65 ? 'bad' : 'warn', `Noise on ${m.name} (ch ${m.ch}): ${e.dbm} dBm measured by the probe`, 'Something besides Wi-Fi is busy here (Bluetooth, a microwave, video senders or another mesh). Sweep again elsewhere to find it, or move the mesh.']); }
-  $('#zbFound').innerHTML = zbFoundList.map((m) => { const mk = zbMaker(m); const sys = ZB_SYS.find((x) => String(zbMesh[x.k]) === String(m.ch)); return `<div class="gcard ok"><div class="lbl">Heard · ch ${m.ch} · PAN ${esc(m.pan)}</div><div class="big" style="font-size:18px">${esc(sys ? sys.name : mk ? mk.name : 'Unknown maker')}</div><div class="ln">${m.rssi} dBm · LQI ${m.lqi}${m.ext ? `<br><span class="mono small">${esc(m.ext)}</span>` : ''}${m.permitJoin ? '<br><span style="color:var(--warn)">Open for joining</span>' : ''}<br><select data-zbas="${m.ch}" style="margin-top:6px;width:100%;max-width:100%"><option value="">Which system?</option>${ZB_SYS.map((x) => `<option value="${x.k}"${sys && sys.k === x.k ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div></div>`; }).join('');
+  for (const m of zbFoundList.filter((f) => f.permitJoin)) flags.push(['warn', `Joining open on ch ${m.ch} (${zbMeshName(m.ch) || 'PAN ' + m.pan})`, 'Pairing was left on: close it in the system\'s app or Composer so nothing joins by accident.']);
+  if (zbEnergy && zbEnergy.ch) for (const m of used) { const e = zbEnergy.ch.find((q) => q.ch === m.ch); if (!e) continue; const [ev, ec] = energyVerdict(e.dbm); const weakest = zbLog.filter((t) => t.ch === m.ch && t.rssi != null).reduce((a2, t) => Math.min(a2, t.rssi), 0);
+    if (ec !== 'ok') flags.push([ec === 'bad' ? 'bad' : 'warn', `Noise on ${m.name} (ch ${m.ch}): ${ev}, peak ${e.dbm} dBm${e.median != null ? ', background ' + e.median + ' dBm' : ''}`, 'Something besides Wi-Fi is busy here (Bluetooth, a microwave, video senders or another mesh). Sweep again elsewhere to find it, or move the mesh.']);
+    if (weakest && e.median != null && weakest - e.median < ZB_ENERGY.minMarginDb) flags.push(['bad', `${m.name}: weakest node only ${weakest - e.median} dB above the background`, `Needs at least ${ZB_ENERGY.minMarginDb} dB (zbm.grade.energy): add a router nearer that spot or move the mesh.`]); }
+  $('#zbFound').innerHTML = zbFoundList.map((m) => { const mk = zbMaker(m); const sys = ZB_SYS.find((x) => String(zbMesh[x.k]) === String(m.ch)); return `<div class="gcard ok"><div class="lbl">Heard · ch ${m.ch} · PAN ${esc(m.pan)}</div><div class="big" style="font-size:18px">${esc(sys ? sys.name : m.kind === 'thread' ? 'Thread' + (m.thread && m.thread.nn ? ' · ' + m.thread.nn : '') : mk ? mk.name : 'Unknown maker')}</div><div class="ln"><span class="muted small">${esc(m.how || '')}</span><br>${m.rssi} dBm · LQI ${m.lqi}${m.ext ? `<br><span class="mono small">${esc(m.ext)}</span>` : ''}${m.permitJoin ? '<br><span style="color:var(--warn)">Joining open: someone left pairing on</span>' : ''}<br><select data-zbas="${m.ch}" style="margin-top:6px;width:100%;max-width:100%"><option value="">Which system?</option>${ZB_SYS.map((x) => `<option value="${x.k}"${sys && sys.k === x.k ? ' selected' : ''}>${esc(x.name)}</option>`).join('')}</select></div></div>`; }).join('');
   $('#zbFound').querySelectorAll('[data-zbas]').forEach((sel) => sel.onchange = () => { const ch = sel.dataset.zbas; for (const x of ZB_SYS) if (String(zbMesh[x.k]) === ch) zbMesh[x.k] = ''; if (sel.value) zbMesh[sel.value] = ch; store.set('zbMesh', zbMesh); renderZbMeshes(); renderZbMeterCh(); if (survey) renderSurvey(); else renderZigbee(); });
   $('#zbFlags').innerHTML = flags.map(([l, t, x]) => `<div class="gflag ${l}"><b>${esc(t)}</b><br><span class="muted">${x}</span></div>`).join('');
   $('#zbRec').innerHTML = [
@@ -1410,11 +1440,13 @@ function renderZigbee() {
     tile('', 'Also check', 'AP ≥ 5 m', 'Every AP at least 5 m from a Zigbee coordinator (a near AP blocks Zigbee even on another channel); coordinators out of racks and metal. Bluetooth, microwaves (Zigbee 19–21) and the meshes themselves need an ESP32-C6 energy scan to measure.'),
   ].join('');
   drawZbChart($('#zbChart'), zl, used);
-  $('#zbTable').innerHTML = `<thead><tr><th>Ch</th><th>MHz</th><th>Wi-Fi on it</th><th>Strongest Wi-Fi</th><th>Noise (probe)</th><th>Used by</th></tr></thead><tbody>${zl.map((z) => { const en = zbEnergy && zbEnergy.ch && zbEnergy.ch.find((e) => e.ch === z.ch); return `<tr${taken.has(z.ch) ? ' style="background:rgba(75,185,211,.08)"' : ''}><td class="mono">${[15, 20, 25].includes(z.ch) ? '<b>' + z.ch + '</b>' : z.ch}</td><td class="mono">${z.freq}</td><td><span class="pill" style="background:${zbHex(z.dbm)}33;color:${zbHex(z.dbm)}">${!survey ? '—' : z.dbm == null ? 'clear' : z.dbm + ' dBm'}</span></td><td class="small">${z.who[0] ? `${esc(z.who[0].ssid || 'hidden')} · ch ${z.who[0].channel} · ${z.who[0].signal} dBm` : ''}</td><td class="mono">${en ? en.dbm + ' dBm' : ''}</td><td>${used.filter((m) => m.ch === z.ch).map((m) => esc(m.name)).join(', ')}${zbFoundList.some((f) => f.ch === z.ch) ? ' <span class="pill ok">heard</span>' : ''}</td></tr>`; }).join('')}</tbody>`;
+  $('#zbTable').innerHTML = `<thead><tr><th>Ch</th><th>MHz</th><th>Wi-Fi on it</th><th>Strongest Wi-Fi</th><th>Noise (probe, peak / background)</th><th>Used by</th></tr></thead><tbody>${zl.map((z) => { const en = zbEnergy && zbEnergy.ch && zbEnergy.ch.find((e) => e.ch === z.ch); return `<tr${taken.has(z.ch) ? ' style="background:rgba(75,185,211,.08)"' : ''}><td class="mono">${[15, 20, 25].includes(z.ch) ? '<b>' + z.ch + '</b>' : z.ch}</td><td class="mono">${z.freq}</td><td><span class="pill" style="background:${zbHex(z.dbm)}33;color:${zbHex(z.dbm)}">${!survey ? '—' : z.dbm == null ? 'clear' : z.dbm + ' dBm'}</span></td><td class="small">${z.who[0] ? `${esc(z.who[0].ssid || 'hidden')} · ch ${z.who[0].channel} · ${z.who[0].signal} dBm` : ''}</td><td>${en ? `<span class="pill ${energyVerdict(en.dbm)[1]}">${en.dbm}${en.median != null ? ' / ' + en.median : ''} dBm</span>` : ''}</td><td>${used.filter((m) => m.ch === z.ch).map((m) => esc(m.name)).join(', ')}${zbFoundList.some((f) => f.ch === z.ch) ? ' <span class="pill ok">heard</span>' : ''}</td></tr>`; }).join('')}</tbody>`;
   $('#zbNote').textContent = 'Zigbee channel k sits at 2405 + 5 × (k − 11) MHz and is 2 MHz wide; a Wi-Fi network covers it when its 20 or 40 MHz span overlaps. This shows the Wi-Fi only: the tablet cannot hear Zigbee itself. Bold channels are the Control4 choices.';
   const devs = (scanData && scanData.devices) || []; const hubs = []; for (const d of devs) { const gd = RF_GUIDE.find((x) => x.test(d)); if (gd && gd.zb) hubs.push([d, gd]); }
-  $('#zbHubs').innerHTML = (hubs.length ? hubs.map(([d, gd]) => guideCard(d, gd)).join('') : `<p class="muted small">${devs.length ? 'No Control4, Hue or Heatmiser hubs in this scan.' : 'No scan yet: run one on the Devices tab.'}</p>`)
+  $('#zbHubs').innerHTML = (hubs.length ? hubs.map(([d, gd]) => guideCard(d, gd).replace(/<\/div><\/div>$/, `${/hue bridge/i.test(d.kind) ? `<div class="row" style="margin-top:8px"><button class="btn-sm" data-huepair="${esc(d.ip)}">${hueKeys[d.ip] ? 'Read Hue channel' : 'Pair + read Hue channel'}</button><span class="muted small">${esc(d._hueNote || (zbLan.hue ? 'Channel ' + zbLan.hue + ' read from the bridge' : ''))}</span></div>` : ''}${/heatmiser/i.test(d.make) ? `<div class="muted small" style="margin-top:6px">${esc(d._neoNote || (zbLan.neo ? 'Channel ' + zbLan.neo + ' read from the neoHub' : ''))}</div>` : ''}</div></div>`)).join('') : `<p class="muted small">${devs.length ? 'No Control4, Hue or Heatmiser hubs in this scan.' : 'No scan yet: run one on the Devices tab.'}</p>`)
+    + (threadNets().length ? `<p class="small"><b>Thread networks on the LAN:</b> ${threadNets().map((t) => `${esc(t.nn || '?')}${t.vn ? ' (' + esc(t.vn) + (t.mn ? ' ' + esc(t.mn) : '') + ')' : ''}`).join(', ')}</p>` : '')
     + '<p class="muted small">Zigbee devices are not on the LAN, so a scan cannot list them: Control4 keypads, dimmers and remotes, Heatmiser neoStats and neoAirs, Hue bulbs. They will come from the Takeoffs wireless plan once that module is built.</p>';
+  $('#zbHubs').querySelectorAll('[data-huepair]').forEach((b) => b.onclick = () => zbHuePair(b.dataset.huepair));
 }
 const guideCard = (d, g) => `<div class="gcard"><div class="lbl">${esc(d.make || '')} · ${esc(d.kind || '')}</div><div class="big" style="font-size:18px">${esc(nameOf(d) || d.model || d.ip)}</div><div class="ln"><span class="mono">${esc(d.ip)}</span> ${ipLink(d)}${d.mac ? ' · ' + esc(d.mac) : ''}${d.firmware ? ' · fw ' + esc(d.firmware) : ''}<br><b>${esc(g.band)}</b><ul class="rfl">${g.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></div></div>`;
 function drawChannels(canvas, list, band, mine) {

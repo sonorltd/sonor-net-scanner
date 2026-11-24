@@ -1,4 +1,4 @@
-/* sonor-wireless.js v1.0.0 (2026-11-24) — the ONE wireless toolkit for every Sonor app (window.SonorWireless, or require()).
+/* sonor-wireless.js v1.1.0 (2026-11-24) — the ONE wireless toolkit for every Sonor app (window.SonorWireless, or require()).
  * Wi-Fi ↔ Zigbee channel maths, the mesh systems and their maker codes, RF / Zigbee hub guidance, the probe grades,
  * the RF frequencies and the Sonor probe HTTP paths. Used by Network Scanner (page, Pi agent, Android agent) and meant
  * for Takeoffs' wireless planning layer, Site and Remotes, so a channel, a grade or a hub tip means the same everywhere.
@@ -31,6 +31,34 @@ const zbVerdict = (rssi) => (rssi == null ? ['—', ''] : rssi >= ZB_LEVELS.soli
 const ZB_OUI = [[/^00:0F:FF/i, 'c4', 'Control4'], [/^00:17:88/i, 'hue', 'Philips Hue'], [/^EC:1B:BD|^00:0B:57|^90:FD:9F/i, 'other', 'Silicon Labs module']];
 const zbMaker = (m) => { const o = ZB_OUI.find(([re]) => re.test(m.ext || '')); return o ? { sys: o[1], name: o[2] } : null; };
 
+
+  // ── Zigbee probe energy sweep grades (zbm.grade.energy): max = bursts, median = background ──
+  const ZB_ENERGY = { clear: -85, bad: -70, minMarginDb: 10 };
+  const energyVerdict = (dbm) => (dbm == null ? ['—', ''] : dbm < ZB_ENERGY.clear ? ['Clear', 'ok'] : dbm <= ZB_ENERGY.bad ? ['Busy', 'warn'] : ['Bad', 'bad']);
+
+  // ── LAN signatures of radio hubs (disc.*): what the scanner's discovery looks for ──
+  const LAN = {
+    mdns: ['_lutron._tcp', '_hue._tcp', '_ihsp._tcp', '_kizbox._tcp', '_kizboxdev._tcp', '_bond._tcp', '_shelly._tcp', '_meshcop._udp', '_matter._tcp', '_matterc._udp', '_hap._tcp', '_sonor-rf._tcp', '_sonor-zb._tcp'],
+    oui: { '000FFF': 'Control4', '001788': 'Philips Hue', F8811A: 'Somfy', '3C6A2C': 'Bond', F44E38: 'Bond', '24FD5B': 'SmartThings', D052A8: 'SmartThings', '286D97': 'SmartThings', '683A48': 'SmartThings' },
+    lutronDevclass: { '081B0101': 'RadioRA 3 processor', '08040100': 'Caseta Smart Bridge', '08050100': 'Caseta Smart Bridge Pro', '080E0401': 'RA2 Select main repeater' },
+    neohubSeek: { port: 19790, payload: 'hubseek' },   // UDP broadcast; reply hubseek{"ip":..,"device_id":mac}
+    tcp: { neohub: [4242, 4243], lutron: [8081, 8083], dirigera: [8443] },
+  };
+
+  // ── Auto-match (zbm.auto.flow): which system is each mesh the probe heard? ──
+  // found: probe /scan meshes · lan: { neo: ch, hue: ch } channels read from hubs · thread: [{ xp, nn, vn }] from _meshcop._udp
+  // Order: a channel read from a hub wins; then Thread by ext PAN; then the maker OUI hint; else a pre-filled dropdown.
+  function autoMatch(found, lan, thread) {
+    lan = lan || {}; thread = thread || [];
+    return (found || []).map((m) => {
+      for (const [sys, ch] of Object.entries(lan)) if (ch && Number(ch) === m.ch) return { ...m, sys, how: 'channel read from the hub' };
+      if (m.kind === 'thread') { const t = thread.find((x) => x.xp && m.ext && x.xp.replace(/[^0-9a-f]/gi, '').toLowerCase() === m.ext.replace(/[^0-9a-f]/gi, '').toLowerCase()) || (thread.length === 1 ? thread[0] : null);
+        return { ...m, sys: 'other', how: t ? `Thread network ${t.nn || ''}${t.vn ? ' (' + t.vn + ')' : ''}` : 'Thread (no payload in the beacon)', thread: t || null }; }
+      const mk = zbMaker(m); if (mk) return { ...m, sys: mk.sys, how: 'maker code (hint)' };
+      return { ...m, sys: null, how: 'pick the system' };
+    });
+  }
+
   // ── Sub-GHz RF + Zigbee hub guidance (zb: true = a Zigbee coordinator, shown on the Zigbee tab) ──
 const RF_GUIDE = [
   { test: (d) => /bond/i.test(d.make), band: '300–450 MHz RF (learns the existing remotes) · Wi-Fi to the LAN', tips: ['Central and high, out of racks and metal boxes, in line of sight of as many motors as practical.', 'One Bond covers a typical floor; add a second per floor where the probe shows marginal results.', 'Give it a DHCP reservation; Control4 drives it over the Bond local API.'] },
@@ -38,7 +66,7 @@ const RF_GUIDE = [
   { test: (d) => /lutron/i.test(d.make), band: 'Clear Connect Type A (UK/EU 868 MHz, US 434 MHz) or Type X (RA3, 2.4 GHz 802.15.4)', tips: ['Every device within 9 m of the processor or a repeater; repeaters within 18 m of each other (Lutron).', 'Never in a metal enclosure or rack.', 'UK systems are 868 MHz: a 433 MHz probe will not measure them; read the frequency on the model label.'] },
   { zb: true, test: (d) => /hue/i.test(d.make) || /hue bridge/i.test(d.kind), band: 'Zigbee 2.4 GHz (channel 11, 15, 20 or 25)', tips: ['Pick the Hue Zigbee channel away from the busiest Wi-Fi (the Zigbee tab shows the clearest channels here).', 'Mains-powered bulbs and plugs repeat: keep some always powered.'] },
   { zb: true, test: (d) => /control4/i.test(d.make) && /controller|director|core|ea-|ca-/i.test(`${d.kind} ${d.model}`), band: 'Zigbee 2.4 GHz mesh (Control4 lighting, keypads, remotes)', tips: ['Zigbee on 15, 20 or 25, picked on the Zigbee tab; never left on the default.', 'Mesh controller never in the rack (secondary controller centrally, or the C4-AK-3M antenna kit) and never on Wi-Fi; every AP at least 5 m away.', 'Max 70 nodes per mesh; 5–9 m between Zigbee devices.'] },
-  { zb: true, test: (d) => /heatmiser/i.test(d.make) || /neohub/i.test(d.kind), band: 'Zigbee 2.4 GHz (Heatmiser neo mesh: neoStat, neoAir, neoPlug)', tips: ['Its own Zigbee mesh, separate from Control4 and Hue: check which Zigbee channel the neoHub is on and keep it off the Control4 and Hue channels and away from the busiest Wi-Fi (Zigbee tab).', 'neoHub wired to the LAN, central and out of the rack; mains neoStats repeat, battery neoAir / neoStat-e do not, so plan a mains neoStat or neoPlug between the hub and far battery stats.', 'Control4 drives it over the neoHub local API (port 4242 legacy, 4243 websocket); give it a DHCP reservation.', 'Draft: Heatmiser ranges are not researched yet.'] },
+  { zb: true, test: (d) => /heatmiser/i.test(d.make) || /neohub/i.test(d.kind), band: 'Zigbee 2.4 GHz (Heatmiser neo mesh: neoStat, neoAir, neoPlug)', tips: ['Its own Zigbee mesh, separate from Control4 and Hue: check which Zigbee channel the neoHub is on and keep it off the Control4 and Hue channels and away from the busiest Wi-Fi (Zigbee tab).', 'neoHub wired to the LAN, central and out of the rack; mains neoStats repeat, battery neoAir / neoStat-e do not, so plan a mains neoStat or neoPlug between the hub and far battery stats.', 'Control4 drives it over the neoHub local API (port 4242 legacy, 4243 websocket); give it a DHCP reservation.', 'Up to 32 devices per hub and about 40 m in open space (zbm.heatmiser.radio). neoHub Gen 3 also has an 868 MHz radio for the neoAir / RF kit; the neoHub mini is 868 MHz only.'] },
   { test: (d) => /shelly/i.test(d.make), band: 'Wi-Fi 2.4 GHz', tips: ['Shelly relays sit in back boxes: check Wi-Fi at the box with the walk test before plastering.'] },
 ];
   const guideFor = (d) => RF_GUIDE.find((g) => g.test(d)) || null;
@@ -72,7 +100,7 @@ const rfVerdict = (m, peak) => { if (m == null) return ['—', '']; const p = pe
   // Research rules (wifi-rf-rules.json): load once, then API.rules[id] = { text, sources, strength, rule? }
   async function loadRules(url) { try { const r = await fetch(url || 'data/wifi-rf-rules.json'); const j = await r.json(); const list = Array.isArray(j) ? j : j.rules || []; API.rules = Object.fromEntries(list.map((x) => [x.id, x])); } catch (e) { API.rules = API.rules || {}; } return API.rules; }
 
-  const API = { VERSION: '1.0.0', ZB, ZB_C4, zbFreq, wifiFreq24, rfW, zigbeeLoad, ZB_SYS, ZB_LEVELS, zbVerdict, ZB_OUI, zbMaker,
-    RF_GUIDE, guideFor, RF_LEVELS, rfVerdict, RF_FREQS, rfFreqFor, PROBES, probePath, isProbe, loadRules, rules: {} };
+  const API = { VERSION: '1.1.0', ZB, ZB_C4, zbFreq, wifiFreq24, rfW, zigbeeLoad, ZB_SYS, ZB_LEVELS, zbVerdict, ZB_OUI, zbMaker,
+    ZB_ENERGY, energyVerdict, LAN, autoMatch, RF_GUIDE, guideFor, RF_LEVELS, rfVerdict, RF_FREQS, rfFreqFor, PROBES, probePath, isProbe, loadRules, rules: {} };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.SonorWireless = API;
 })(typeof window !== 'undefined' ? window : globalThis);

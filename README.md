@@ -1,4 +1,4 @@
-# Sonor Network Scanner · v1.6.6
+# Sonor Network Scanner · v1.6.7
 
 A commissioning scanner for AV / Control4 sites. It finds every device on the network and says what it is in AV terms (make, model, firmware, serial where the device publishes it), checks the site against the project's plan in the Network Map app, and prints an as-found IP schedule.
 
@@ -71,6 +71,13 @@ Not done yet: hosting the page at apps.sonor.co.uk (needs the `sonorltd/sonor-ne
 - **Check against project** shows the project's uploaded scans (one master table, filtered per project) and the office's Unassigned
   list (attach to a project). **Review** opens an uploaded scan here; Fill MACs / Mark reviewed calls `net_scan_apply`, which writes
   the revision note into Network Map's history (`sonor_revisions`, app `network-map`: who scanned, who reviewed, what changed).
+
+## v1.6.7 (2026-11-24): research round 2, no-typing Zigbee
+- **Channels read from the hubs**: the neoHub's Zigbee channel over its legacy API (TCP 4242, `GET_SYSTEM`), the Hue bridge's over its API (one press of the bridge button pairs it, the key is kept), Control4's from the project's last upload (Control4 has no LAN source). Then the probe's beacon scan is matched by `SonorWireless.autoMatch`: hub channel first, Thread by ext PAN, maker code as a hint, a pre-filled list last.
+- **Thread** meshes (beacons with no Zigbee payload, Lutron Type X) are named from Thread border routers on the LAN (`_meshcop._udp` nn / vn / mn). **Joining open** is flagged.
+- **Noise sweep** grades from research: clear below -85, busy to -70, bad above; peak and background per channel; a node less than 10 dB above the background fails.
+- **Discovery**: neoHub by UDP `hubseek` (19790) even with 4242 off, and by HomeKit name; IKEA Dirigera (`_ihsp._tcp`); Thread border routers; Lutron product from DEVCLASS; SmartThings and Somfy (Overkiz) by MAC; Somfy Developer Mode noted.
+- **zb-probe 1.1.0**: frames copied out of the receive ISR and the buffer handed back at once (required since IDF 5.1.3), 8 × 8 ms energy windows with max and median, ext PAN read at the right offset, Thread beacons reported as `kind: "thread"`, no Wi-Fi scanning during a sweep; ESP32-H2 noted as the cleaner always-on chip.
 
 ## v1.6.6 (2026-11-24): one shared wireless module
 - The Zigbee / Wi-Fi channel maths, the mesh systems and maker codes, hub guidance, RF and Zigbee grades, RF frequencies and the probe HTTP paths now live in the workspace module **`data/sonor-wireless.js`** (`window.SonorWireless`, or `require()` in the Pi and Android agents). Master: `~/Code/Sonor/sonor-wireless.js`; `sync-everything.sh` copies it (and the research `wifi-rf-rules.json`) to every app's `data/` and to this app's `public/data/`, so Takeoffs' wireless planning, Site and Remotes use the same numbers. `test/wireless.test.js` pins them.

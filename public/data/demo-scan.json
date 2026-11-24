@@ -1092,6 +1092,17 @@
       "model": "AppleTV14,1",
       "osvers": "18.1"
      }
+    },
+    {
+     "type": "_meshcop._udp",
+     "name": "Living Room Apple TV",
+     "port": 49154,
+     "txt": {
+      "nn": "MyHome42",
+      "xp": "1A2B3C4D5E6F7081",
+      "vn": "Apple Inc.",
+      "mn": "AppleTV6,2"
+     }
     }
    ],
    "upnp": [],

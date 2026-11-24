@@ -14,7 +14,7 @@ const tools = require('./lib/tools');
 const { netinfo, speedtest } = require('./lib/netinfo');
 const wifi = require('./lib/wifi');
 
-const VERSION = '1.6.6';
+const VERSION = '1.6.7';
 const PORT = Number(process.env.PORT || 8050);
 const DATA = process.env.NETSCAN_DATA || path.join(__dirname, 'scans');
 const PUBLIC = path.join(__dirname, 'public');
@@ -108,6 +108,38 @@ const actions = {
   // RF / Zigbee tabs: read a Sonor probe on the site network (paths from the shared data/sonor-wireless.js). The agent fetches it so an https page can too.
   rfProbe: async ({ ip, mhz } = {}) => probeGet('rf', ip, { mhz }),
   zbProbe: async ({ ip, op, ch, reset } = {}) => probeGet('zb', ip, { op, ch, reset }),
+
+  // Zigbee channels read straight from the hubs, so nobody types them (research zbm.lan.*).
+  // neoHub legacy API: TCP 4242, JSON + NUL, no token (off unless enabled in the Heatmiser app). The channel field name is
+  // not documented, so any key containing "channel" in GET_SYSTEM's answer is used.
+  neoHubSystem: async ({ ip } = {}) => {
+    if (!net.isIp(ip || '')) return [400, { error: 'pick the neoHub' }];
+    const sock = require('net').connect(4242, ip); let buf = '';
+    const r = await new Promise((resolve, reject) => {
+      const t = setTimeout(() => { sock.destroy(); reject(new Error('The neoHub did not answer on 4242 (turn on the legacy API in the Heatmiser app, or use the Zigbee probe)')); }, 3000);
+      sock.on('connect', () => sock.write('{"GET_SYSTEM":0}\0'));
+      sock.on('data', (d) => { buf += d; if (buf.includes('\0') || /}\s*$/.test(buf)) { clearTimeout(t); sock.end(); try { resolve(JSON.parse(buf.replace(/\0/g, ''))); } catch { reject(new Error('Unexpected answer from the neoHub')); } } });
+      sock.on('error', (e) => { clearTimeout(t); reject(e); });
+    });
+    const key = Object.keys(r).find((k) => /channel/i.test(k)); const ch = key ? Number(r[key]) : null;
+    return [200, { channel: ch >= 11 && ch <= 26 ? ch : null, field: key || null, firmware: r.HUB_VERSION || r.FIRMWARE || null, raw: r }];
+  },
+  // Hue: needs an app key. With no key, ask the bridge for one (works for 30 s after the bridge's button is pressed).
+  hueZigbee: async ({ ip, key } = {}) => {
+    if (!net.isIp(ip || '')) return [400, { error: 'pick the Hue bridge' }];
+    const req = (method, path, body) => new Promise((resolve, reject) => {
+      const q = require('https').request({ host: ip, port: 443, path, method, rejectUnauthorized: false, timeout: 3000, headers: { 'Content-Type': 'application/json' } }, (res) => { let b = ''; res.on('data', (d) => { b += d; }); res.on('end', () => { try { resolve(JSON.parse(b)); } catch { reject(new Error('Unexpected answer from the Hue bridge')); } }); });
+      q.on('timeout', () => q.destroy(new Error('The Hue bridge did not answer'))); q.on('error', reject); if (body) q.write(JSON.stringify(body)); q.end();
+    });
+    if (!key) {
+      const r = await req('POST', '/api', { devicetype: 'sonor#scanner' });
+      const ok = Array.isArray(r) && r[0] && r[0].success; if (!ok) return [200, { needButton: true, error: (r[0] && r[0].error && r[0].error.description) || 'press the button on the bridge' }];
+      key = ok.username;
+    }
+    const c = await req('GET', `/api/${encodeURIComponent(key)}/config`);
+    if (Array.isArray(c) && c[0] && c[0].error) return [200, { needButton: true, error: c[0].error.description }];
+    return [200, { key, channel: Number(c.zigbeechannel) || null, bridgeid: c.bridgeid || null, name: c.name || null }];
+  },
 
   // Re-probe one address (after a device is plugged in or renamed).
   probe: async ({ ip } = {}) => {

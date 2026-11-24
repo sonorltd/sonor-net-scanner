@@ -1,5 +1,5 @@
 {
- "version": "2026-11-24",
+ "version": "2026-11-24b",
  "about": "Rules for the Network Scanner Wi-Fi spectrum, Zigbee overlay, channel advice and RF tab. Same {id,text,sources} style as remotes/c4-tips.json, plus 'strength' and optional machine-readable fields. Ids are stable: never renumber, add new ids instead. Research done with web search and direct reading of sources; Apify was asked for but no Apify connector exists in this project.",
  "strength_key": {
   "strong": "Regulator or manufacturer document, read directly.",
@@ -482,7 +482,7 @@
  "rf": [
   {
    "id": "rf.disc.bond",
-   "text": "Bond Bridge: mDNS _bond._tcp (TXT carries version). HTTP GET /v2/sys/version needs no token: returns target, fw_ver, fw_date, make, model, uptime_s. Everything else needs the BOND-Token header (from /v2/token within 10 min of a power cycle). Some APs drop the mDNS reply; a power cycle often makes it appear.",
+   "text": "Bond Bridge: mDNS _bond._tcp (TXT carries version). HTTP GET /v2/sys/version needs no token: returns target, fw_ver, fw_date, make, model, uptime_s. Everything else needs the BOND-Token header (from /v2/token within 10 min of a power cycle). Some APs drop the mDNS reply; a power cycle often makes it appear. See disc.bond for DHCP/OUI matching.",
    "sources": [
     "https://bond-api-docs.s3.amazonaws.com/feat-weather-devices-other-bridges-local.html",
     "https://forum.bondhome.io/t/discovery-procedure/1228",
@@ -497,7 +497,7 @@
   },
   {
    "id": "rf.disc.tahoma",
-   "text": "Somfy TaHoma / Connexoon (Overkiz): mDNS _kizbox._tcp. Local API on port 8443 only after Developer Mode is turned on in the Somfy account; without it, just show 'TaHoma found, gateway PIN in TXT'.",
+   "text": "Somfy TaHoma / Connexoon: see disc.tahoma (newer, from the Home Assistant manifest). _kizbox._tcp always; the local API on 8443 (_kizboxdev._tcp) appears only after Developer Mode is on.",
    "sources": [
     "https://github.com/Somfy-Developer/Somfy-TaHoma-Developer-Mode",
     "https://www.home-assistant.io/integrations/overkiz"
@@ -521,7 +521,7 @@
   },
   {
    "id": "rf.disc.lutron",
-   "text": "Lutron RA2 Select / RA3 / Caseta processors: mDNS _lutron._tcp; LEAP on TCP 8081 (TLS). RA2 main repeater: Telnet 23.",
+   "text": "Lutron RA2 Select / RA3 / Caseta processors: mDNS _lutron._tcp; LEAP on TCP 8081 (TLS). RA2 main repeater: Telnet 23. See disc.lutron for TXT keys; pairing is on 8083.",
    "sources": [
     "Home Assistant lutron_caseta / lutron integrations (not re-read here)"
    ],
@@ -784,6 +784,429 @@
    "text": "Colour lines on the chart at -67 dBm (AV minimum) and -82 dBm (contention threshold).",
    "sources": [
     "https://docs.sophos.com/nsg/wifi/help/en-us/GettingStarted/ChannelSelectionGuide/index.html"
+   ],
+   "strength": "heuristic"
+  }
+ ],
+ "zigbee_meter": [
+  {
+   "id": "zbm.hw.choice",
+   "text": "Probe chip: ESP32-C6 is fine if it sweeps 802.15.4 while its Wi-Fi is idle (connected but not scanning). Espressif rates Wi-Fi scanning alongside Zigbee/Thread scanning as 'supported but unstable', and 802.15.4 receive has the lowest priority on the shared 2.4 GHz radio. For an always-listening node meter, ESP32-H2 (802.15.4 + BLE, no Wi-Fi) or a C6/S3 + H2 pair is cleaner. Rule for the firmware: never run a Wi-Fi scan during a Zigbee sweep or listen window.",
+   "sources": [
+    "https://docs.espressif.com/projects/esp-idf/en/stable/esp32c6/api-guides/coexist.html"
+   ],
+   "strength": "strong",
+   "rule": {
+    "no_wifi_scan_during_154": true
+   }
+  },
+  {
+   "id": "zbm.hw.compare",
+   "text": "Alternatives: nRF52840 dongle (about £10-15, Nordic sniffer + Wireshark extcap, per-packet power in dBm, good for deep capture in the office). Silicon Labs EFR32 dongles (ZBDongle-E): energy scan maxRssiValue in dBm. TI CC2652 (ZBDongle-P) via zigpy: energy scan is a percentage, not dBm, so don't mix it with dBm grades. Keep the ESP32 probe as the site tool; it shares the Remotes/RF probe firmware pattern.",
+   "sources": [
+    "https://github.com/NordicSemiconductor/nRF-Sniffer-for-802.15.4",
+    "https://docs.silabs.com/d/zigbee-stack-api/7.3.0/network-formation",
+    "https://github.com/zigpy/zigpy-cli"
+   ],
+   "strength": "medium"
+  },
+  {
+   "id": "zbm.api.rx",
+   "text": "ESP-IDF receive: esp_ieee802154_receive_done(uint8_t *frame, esp_ieee802154_frame_info_t *info). frame[0] is the PSDU length; the FCS bytes are replaced by RSSI and LQI. info has channel, rssi (int8 dBm), lqi, pending, timestamp. You MUST call esp_ieee802154_receive_handle_done(frame) after copying (required since IDF 5.1.3) or the driver runs out of buffers and RX stops. Callbacks run in ISR context: copy into a queue, parse in a task.",
+   "sources": [
+    "https://raw.githubusercontent.com/espressif/esp-idf/master/components/ieee802154/include/esp_ieee802154.h",
+    "https://docs.espressif.com/projects/esp-idf/en/v5.3/esp32c6/migration-guides/release-5.x/5.2/ieee802154.html",
+    "https://raw.githubusercontent.com/espressif/esp-idf/master/examples/ieee802154/ieee802154_cli/components/cmd_ieee802154/ieee802154_cmd.c"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "zbm.api.ed",
+   "text": "Energy detect: esp_ieee802154_energy_detect(duration) takes 16 us symbols (e.g. 500 = 8 ms); the result comes in esp_ieee802154_energy_detect_done(int8_t dBm). Set the channel with esp_ieee802154_set_channel(11-26) before each call. Take several samples per channel and report max and median; a single 8 ms window misses bursty Wi-Fi.",
+   "sources": [
+    "https://raw.githubusercontent.com/espressif/esp-idf/master/components/ieee802154/include/esp_ieee802154.h",
+    "https://raw.githubusercontent.com/espressif/esp-idf/master/examples/ieee802154/ieee802154_cli/components/cmd_ieee802154/ieee802154_cmd.c"
+   ],
+   "strength": "strong",
+   "rule": {
+    "ed_symbols_default": 500,
+    "samples_per_channel": 8
+   }
+  },
+  {
+   "id": "zbm.api.promisc",
+   "text": "Node meter: esp_ieee802154_set_promiscuous(true) + esp_ieee802154_set_rx_when_idle(true) on the mesh channel, then group frames by source address (short + PAN ID; extended address when present) and keep last/avg RSSI and LQI per node.",
+   "sources": [
+    "https://raw.githubusercontent.com/espressif/esp-idf/master/components/ieee802154/include/esp_ieee802154.h"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "zbm.beacon.request",
+   "text": "Beacon request: bytes 03 08 <seq> FF FF FF FF 07 (FC 0x0803 MAC command, dst PAN 0xFFFF, dst addr 0xFFFF, cmd 0x07), sent with esp_ieee802154_transmit(frame, false). Listen about 200-300 ms per channel for beacons (FC low 3 bits = 0). The build's format is correct.",
+   "sources": [
+    "https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/158/11.7.2016-when-waveshare-end-device-attached.txt"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "zbm.beacon.payload",
+   "text": "Zigbee beacon payload (protocol ID 0x00): stack profile (2 = Zigbee PRO), protocol version, router capacity, device depth, end-device capacity, 8-byte extended PAN ID, tx offset, nwkUpdateId. Permit-join = bit 15 of the superframe spec (0xCFFF yes, 0x4FFF no). Show 'joining open' as a warning: someone left permit-join on.",
+   "sources": [
+    "https://e2e.ti.com/cfs-file/__key/communityserver-discussions-components-files/158/11.7.2016-when-waveshare-end-device-attached.txt",
+    "https://www.nsnam.org/doxygen/d2/d53/classns3_1_1zigbee_1_1_zigbee_beacon_payload.html"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "zbm.beacon.thread",
+   "text": "Thread: routers do answer a beacon request, but since Thread 1.2.1 the beacon has no payload (no network name, no ext PAN). Classify a beacon with no Zigbee payload as 'Thread / other 802.15.4', keep its 16-bit PAN ID, and name it from the LAN (_meshcop._udp TXT nn = network name, xp = ext PAN ID). Thread is also visible passively from MLE Advertisements (about every 30 s) on its channel.",
+   "sources": [
+    "https://openthread.io/reference/config/group/config-mac",
+    "https://openthread.io/guides/thread-primer/network-discovery",
+    "https://www.home-assistant.io/integrations/thread/"
+   ],
+   "strength": "medium"
+  },
+  {
+   "id": "zbm.beacon.coverage",
+   "text": "What an active beacon scan finds: Zigbee coordinators and routers that allow beacons (Control4, Hue, IKEA, Aqara, SmartThings, neo if it is Zigbee) - yes, from routers in earshot. End-devices never answer. Lutron Clear Connect Type X is Thread-based (standard 802.15.4 + 6LoWPAN), so it shows as Thread. Sleepy-only networks or a hub out of range show nothing: say 'not heard here', not 'not present'.",
+   "sources": [
+    "https://www.nsnam.org/doxygen/d2/d53/classns3_1_1zigbee_1_1_zigbee_beacon_payload.html",
+    "https://edz.art/lab-notes/ccx-nrf52840/",
+    "https://openthread.io/guides/thread-primer/network-discovery"
+   ],
+   "strength": "medium"
+  },
+  {
+   "id": "zbm.oui.labels",
+   "text": "Labelling meshes by ext PAN ID OUI is a hint only: no source confirms Control4 or Hue use the coordinator EUI-64 as the ext PAN ID. Known OUIs: Control4 00:0F:FF, Philips/Signify 00:17:88 (confirmed as MAC OUIs). Also check the beacon's source extended address (if long-addressed) and the router addresses heard in promiscuous mode. Best label = channel match with a hub found on the LAN (zbm.lan.*). Show 'probably Control4' unless two signals agree.",
+   "sources": [
+    "https://maclookup.app/macaddress/000fff",
+    "https://maclookup.app/macaddress/001788"
+   ],
+   "strength": "medium",
+   "rule": {
+    "oui": {
+     "000FFF": "Control4",
+     "001788": "Philips Hue"
+    }
+   }
+  },
+  {
+   "id": "zbm.oui.heatmiser",
+   "text": "Heatmiser: no Heatmiser IEEE OUI or Zigbee address capture was found. Its docs never say 'Zigbee' (they say 'Mesh'), though the Home Assistant integration exposes a 'ZigBee Channel' and the API has SET_CHANNEL. Don't hard-code a Heatmiser OUI; identify neo meshes by matching the channel read from the neoHub API.",
+   "sources": [
+    "https://www.heatmiser.com/heatmiser-neo-faq/",
+    "https://mindrustuk.github.io/Heatmiser-for-home-assistant/hub.html",
+    "https://gist.github.com/mikepallister/0c8b73a6231cd58ead42b0b51b5d06f7"
+   ],
+   "strength": "unverified"
+  },
+  {
+   "id": "zbm.lan.hue",
+   "text": "Hue channel with no probe: CLIP v1 GET /api/<appkey>/config -> zigbeechannel (11/15/20/25, 0 = not set); CLIP v2 /clip/v2/resource/zigbee_connectivity -> channel.value 'channel_NN'. Needs an app key (press the bridge button once; store the key in the project's Network Map record so nobody types it again). The keyless /api/config probably doesn't include it. The channel can be changed with PUT config {zigbeechannel:N}.",
+   "sources": [
+    "https://docs.rs/crate/huelib/latest/source/src/resource/config.rs",
+    "https://docs.rs/crate/hues/latest/source/src/service/zigbee.rs",
+    "https://dresden-elektronik.github.io/deconz-rest-doc/endpoints/configuration",
+    "https://github.com/home-assistant-libs/aiohue"
+   ],
+   "strength": "medium",
+   "discover": {
+    "http_auth": "/api/<key>/config",
+    "field": "zigbeechannel"
+   }
+  },
+  {
+   "id": "zbm.lan.neohub",
+   "text": "neoHub channel with no probe: Home Assistant's heatmiserneo integration shows a 'ZigBee Channel' diagnostic read from the hub. Most likely from {\"GET_SYSTEM\":0} (field not confirmed). Legacy TCP 4242 needs no token (send JSON + NUL byte); WebSocket 4243 needs the API token made in the Heatmiser app (Settings > System > API Access). New firmware turns 4242 off after 48 h idle unless 'Legacy API Enable' is on. SET_CHANNEL exists to move it.",
+   "sources": [
+    "https://mindrustuk.github.io/Heatmiser-for-home-assistant/hub.html",
+    "https://www.openhab.org/addons/bindings/neohub/",
+    "https://gist.github.com/mikepallister/0c8b73a6231cd58ead42b0b51b5d06f7",
+    "https://github.com/MindrustUK/Heatmiser-for-home-assistant"
+   ],
+   "strength": "medium",
+   "discover": {
+    "tcp": [
+     4242,
+     4243
+    ],
+    "probe": "{\"INFO\":0}\\u0000",
+    "channel_cmd": "{\"GET_SYSTEM\":0}"
+   }
+  },
+  {
+   "id": "zbm.lan.control4",
+   "text": "Control4 Zigbee channel: set and shown only in Composer Pro (Zigbee Channel on the mesh controller). No public LAN API, SDDP field or Director endpoint exposes it. So: probe it (beacon scan) or pick it from a dropdown once and save it in the project's Network Map record; then every app reads it from there.",
+   "sources": [
+    "https://docs.control4.com/help/c4/software/cpro/dealer-composer-help/content/composerpro_userguide/configuring_a_zigbee_mesh_controller.htm",
+    "https://control4.com/docs/product/zigbee/best-practices/english/latest",
+    "https://github.com/sammck/sddp-discovery-protocol"
+   ],
+   "strength": "medium"
+  },
+  {
+   "id": "zbm.grade.rssi",
+   "text": "Node RSSI grades: Solid >= -75 dBm, Marginal -75 to -85, Poor below -85. This matches Silicon Labs' example of 20 dB margin over a typical -95 dBm receiver (-75) and 10 dB margin (-85); ZHA calls -60 and above strong and -80 and below at risk. The build's draft numbers are good. Grade on RSSI; ignore LQI as a grade (vendors compute it differently).",
+   "sources": [
+    "https://www.silabs.com/documents/public/user-guides/ug103-01-fundamentals-wireless-network.pdf",
+    "https://www.home-assistant.io/integrations/zha/"
+   ],
+   "strength": "medium",
+   "rule": {
+    "solid": -75,
+    "marginal": -85
+   }
+  },
+  {
+   "id": "zbm.grade.energy",
+   "text": "Channel energy grades from ED (dBm, max over samples): clear below -85, busy -85 to -70, bad above -70. Use the median for the background and max for bursts. A Zigbee channel whose median is within 10 dB of the mesh's weakest node RSSI is a failing channel.",
+   "sources": [
+    "https://www.silabs.com/documents/public/user-guides/ug103-01-fundamentals-wireless-network.pdf"
+   ],
+   "strength": "heuristic",
+   "rule": {
+    "clear": -85,
+    "bad": -70,
+    "min_margin_db": 10
+   }
+  },
+  {
+   "id": "zbm.heatmiser.radio",
+   "text": "Heatmiser neo: neoHub Gen3 has two radios, 2.4 GHz (the neoStat mesh) and 868 MHz (neoAir/RF kit). The neoHub mini lists only 868 MHz. Up to 32 devices per hub, about 40 m in open space. Mains-powered neoStats form the mesh; battery neoAir joins but doesn't repeat; neoPlug and Boost repeat both mesh and RF. Advice: at least one mains device or neoPlug per floor, more through thick walls or metal; hub is wired to the router.",
+   "sources": [
+    "https://www.heatmiser.com/download/328/neo-manuals/14777/heatmiser-neohubgen3-manual.pdf",
+    "https://www.heatmiser.com/download/329/neo-datasheets/14776/neohub-gen3-datasheet.pdf",
+    "https://www.heatmiser.com/download/211/english/11479/neohub-mini-hw-datasheet.pdf",
+    "https://www.heatmiser.com/heatmiser-neo-faq/",
+    "https://faq.heatmiser.com/hc/en-us/articles/360001740139-10-Neo-System-Tips"
+   ],
+   "strength": "medium",
+   "rule": {
+    "max_devices": 32,
+    "open_range_m": 40
+   }
+  },
+  {
+   "id": "zbm.auto.flow",
+   "text": "No-typing flow: (1) LAN scan finds hubs (Control4 SDDP/SSDP, Hue, neoHub, Dirigera, TaHoma, Bond, Lutron, Thread BRs). (2) Read channels over the LAN where possible (Hue with key, neoHub). (3) Probe beacon-scans 11-26 and lists meshes. (4) Auto-match mesh to hub by channel + OUI; only ask (dropdown, pre-filled) when two meshes share a channel or nothing matches. (5) Saved answers go into the project's Network Map record so Remotes, Scanner and Site Rig read the same data.",
+   "sources": [],
+   "strength": "heuristic"
+  }
+ ],
+ "discovery": [
+  {
+   "id": "disc.lutron",
+   "text": "Lutron: mDNS _lutron._tcp. TXT SYSTYPE (HA matches smartbridge*, ra2select*, radiora3*, hwqs*, athena*), DEVCLASS (RA3 081B0101, Caseta SB 08040100, SB Pro 08050100, RA2 Select 080E0401), CODEVER, MACADDR. LEAP TLS on 8081, pairing on 8083. Hostname lutron-<serial>.",
+   "sources": [
+    "https://github.com/home-assistant/core/blob/dev/homeassistant/generated/zeroconf.py",
+    "https://github.com/gurumitts/pylutron-caseta",
+    "https://github.com/openhab/openhab-addons"
+   ],
+   "strength": "strong",
+   "discover": {
+    "mdns": "_lutron._tcp",
+    "tcp": [
+     8081,
+     8083
+    ]
+   }
+  },
+  {
+   "id": "disc.hue",
+   "text": "Hue: mDNS _hue._tcp (port 443, TXT bridgeid, modelid e.g. BSB002). Keyless GET http://<ip>/api/config gives name, bridgeid, swversion.",
+   "sources": [
+    "https://github.com/home-assistant-libs/aiohue",
+    "https://github.com/home-assistant/core/blob/dev/homeassistant/generated/zeroconf.py"
+   ],
+   "strength": "strong",
+   "discover": {
+    "mdns": "_hue._tcp",
+    "http": "/api/config"
+   }
+  },
+  {
+   "id": "disc.dirigera",
+   "text": "IKEA Dirigera: mDNS _ihsp._tcp; local HTTPS API on 8443 (token by pairing button).",
+   "sources": [
+    "https://github.com/lpgera/dirigera",
+    "https://0x5d.pages.dev/posts/ikeadirigera"
+   ],
+   "strength": "medium",
+   "discover": {
+    "mdns": "_ihsp._tcp",
+    "tcp": [
+     8443
+    ]
+   }
+  },
+  {
+   "id": "disc.aqara",
+   "text": "Aqara M2/M3: no confirmed Aqara mDNS type. Expect _hap._tcp (HomeKit) and Matter (_matter._tcp); old gateways _miio._udp. Identify by hostname/OUI.",
+   "sources": [],
+   "strength": "unverified"
+  },
+  {
+   "id": "disc.smartthings",
+   "text": "SmartThings hub: Home Assistant matches by DHCP hostname (st*, smartthings*, hub*, smarthub) and MAC OUIs 24:FD:5B, D0:52:A8, 28:6D:97, 68:3A:48.",
+   "sources": [
+    "https://github.com/home-assistant/core/blob/dev/homeassistant/components/smartthings/manifest.json"
+   ],
+   "strength": "medium",
+   "discover": {
+    "oui": [
+     "24FD5B",
+     "D052A8",
+     "286D97",
+     "683A48"
+    ]
+   }
+  },
+  {
+   "id": "disc.tahoma",
+   "text": "Somfy TaHoma/Connexoon: _kizbox._tcp (443) always; _kizboxdev._tcp on 8443 only when Developer Mode is on. Name gateway-*, TXT gateway_pin, api_version, fw_version. MAC OUI F8:81:1A. Replaces the port detail in rf.disc.tahoma.",
+   "sources": [
+    "https://github.com/home-assistant/core/blob/dev/homeassistant/components/overkiz/manifest.json",
+    "https://github.com/home-assistant/core/blob/dev/homeassistant/generated/zeroconf.py"
+   ],
+   "strength": "strong",
+   "discover": {
+    "mdns": [
+     "_kizbox._tcp",
+     "_kizboxdev._tcp"
+    ],
+    "oui": [
+     "F8811A"
+    ]
+   }
+  },
+  {
+   "id": "disc.bond",
+   "text": "Bond: _bond._tcp, service name starts with the Bond ID; DHCP hostname bond-*; MAC OUIs 3C:6A:2C and F4:4E:38. GET /v2/sys/version needs no token.",
+   "sources": [
+    "https://github.com/home-assistant/core/blob/dev/homeassistant/components/bond/manifest.json",
+    "https://bond-api-docs.s3.amazonaws.com/feat-weather-devices-other-bridges-local.html"
+   ],
+   "strength": "strong",
+   "discover": {
+    "mdns": "_bond._tcp",
+    "oui": [
+     "3C6A2C",
+     "F44E38"
+    ]
+   }
+  },
+  {
+   "id": "disc.neohub",
+   "text": "Heatmiser neoHub: _hap._tcp named 'heatmiser neohub*'; UDP broadcast 'hubseek' to port 19790, reply hubseek{\"ip\":...,\"device_id\":mac}; TCP 4242 (legacy, no token) and 4243 (WebSocket, token). The build's 4242/4243 detection is right; add the hubseek broadcast so it's found even when 4242 is off.",
+   "sources": [
+    "https://github.com/MindrustUK/Heatmiser-for-home-assistant",
+    "https://www.openhab.org/addons/bindings/neohub/"
+   ],
+   "strength": "medium",
+   "discover": {
+    "udp_broadcast": {
+     "port": 19790,
+     "payload": "hubseek"
+    },
+    "tcp": [
+     4242,
+     4243
+    ]
+   }
+  },
+  {
+   "id": "disc.control4",
+   "text": "Control4: SDDP NOTIFY ALIVE to 239.255.255.250 UDP 1902 (headers Type, Primary-Proxy, Manufacturer, Model, Driver); Home Assistant also finds Directors by SSDP ST c4:director. Controller/ZAP Type strings are not documented publicly; log what sites send.",
+   "sources": [
+    "https://github.com/sammck/sddp-discovery-protocol",
+    "https://github.com/home-assistant/core/blob/dev/homeassistant/generated/ssdp.py"
+   ],
+   "strength": "medium"
+  },
+  {
+   "id": "disc.shelly",
+   "text": "Shelly: Gen1 _http._tcp named shelly*; Gen2+ _shelly._tcp; keyless GET /shelly returns model and gen.",
+   "sources": [
+    "https://github.com/home-assistant/core/blob/dev/homeassistant/generated/zeroconf.py"
+   ],
+   "strength": "medium",
+   "discover": {
+    "mdns": [
+     "_shelly._tcp",
+     "_http._tcp"
+    ],
+    "http": "/shelly"
+   }
+  },
+  {
+   "id": "disc.thread",
+   "text": "Thread border routers: _meshcop._udp TXT nn (network name), xp (ext PAN ID), xa, tv, vn (vendor), mn (model), sb, at, id. Use vn/mn to say 'Apple', 'Google', 'Lutron', 'Aqara' etc. Matter: _matter._tcp (running) and _matterc._udp (waiting to be added).",
+   "sources": [
+    "https://www.home-assistant.io/integrations/thread/",
+    "https://github.com/home-assistant/core/blob/dev/homeassistant/generated/zeroconf.py"
+   ],
+   "strength": "strong",
+   "discover": {
+    "mdns": [
+     "_meshcop._udp",
+     "_matter._tcp",
+     "_matterc._udp"
+    ]
+   }
+  },
+  {
+   "id": "disc.sonos",
+   "text": "Sonos: _sonos._tcp (1443, TXT info, vers), SSDP urn:schemas-upnp-org:device:ZonePlayer:1.",
+   "sources": [
+    "https://github.com/home-assistant/core/blob/dev/homeassistant/generated/zeroconf.py",
+    "https://github.com/home-assistant/core/blob/dev/homeassistant/generated/ssdp.py"
+   ],
+   "strength": "strong"
+  }
+ ],
+ "subghz_tools": [
+  {
+   "id": "sg.rtl433.somfy",
+   "text": "rtl_433 decodes Somfy RTS (protocol 167) and io-homecontrol (189). Each event has id = remote address, control = button, counter = rolling code. So it can auto-name 'Somfy remote 1A2B3C pressed Up' with no typing. Tune the SDR so 433.42 MHz is in the passband (e.g. -f 433.42M).",
+   "sources": [
+    "https://github.com/merbanan/rtl_433",
+    "https://raw.githubusercontent.com/merbanan/rtl_433/master/src/devices/somfy_rts.c"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "sg.rtl433.levels",
+   "text": "rtl_433 -M level adds RSSI, SNR and noise to every event. -F http serves http://<pi>:8433 with /events (chunked JSON stream) and a WebSocket; -F mqtt also works. The scanner page can read the Site Rig's stream directly.",
+   "sources": [
+    "https://github.com/merbanan/rtl_433",
+    "https://raw.githubusercontent.com/merbanan/rtl_433/master/src/http_server.c"
+   ],
+   "strength": "strong",
+   "discover": {
+    "tcp": [
+     8433
+    ],
+    "http": "/events"
+   }
+  },
+  {
+   "id": "sg.probe.rtl433esp",
+   "text": "Portable probe firmware: rtl_433_ESP (ESP32 + CC1101) decodes Somfy RTS as protocol 178 (match by name, not number), tracks noise floor and per-message RSSI, one frequency and one modulation per build, fewer decoders and roughly half the range of an RTL-SDR. OpenMQTTGateway wraps it and reports rssi, currentRssi and rssiThreshold, and can retune live.",
+   "sources": [
+    "https://github.com/NorthernMan54/rtl_433_ESP",
+    "https://docs.openmqttgateway.com/use/rf"
+   ],
+   "strength": "medium"
+  },
+  {
+   "id": "sg.recommend",
+   "text": "Use both. Site Rig Pi + RTL-SDR V4 + rtl_433: the fixed 'ear' that names every remote and logs level/SNR at the rig. ESP32 + CC1101 probe with rtl_433_ESP decode + RSSI: carried to the blind so the reading is taken where the motor's receiver is. The probe's grade (rf.probe.grades) is the pass/fail; the Pi supplies names and the noise picture.",
+   "sources": [
+    "https://github.com/merbanan/rtl_433",
+    "https://github.com/NorthernMan54/rtl_433_ESP"
    ],
    "strength": "heuristic"
   }
