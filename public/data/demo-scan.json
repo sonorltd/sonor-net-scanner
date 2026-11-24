@@ -2346,6 +2346,65 @@
    "conflict": null
   },
   {
+   "ip": "192.168.1.78",
+   "mac": "40:4C:CA:5B:10:7E",
+   "vendor": "Espressif",
+   "randomMac": false,
+   "name": "sonor-zb-107e",
+   "make": "Sonor",
+   "model": "ESP32-C6",
+   "kind": "Sonor Zigbee probe",
+   "service": "network",
+   "serviceLabel": "09 Network",
+   "firmware": "1.0.0",
+   "firmwareHint": "",
+   "serial": "",
+   "confidence": "high",
+   "evidence": [
+    "Bonjour Sonor Zigbee probe"
+   ],
+   "c4Driver": "",
+   "isGateway": false,
+   "isSelf": false,
+   "seenBy": [
+    "tcp",
+    "arp",
+    "mdns"
+   ],
+   "latency": 7,
+   "hostnames": [],
+   "ports": [
+    {
+     "port": 80,
+     "label": "HTTP"
+    }
+   ],
+   "web": [],
+   "services": [],
+   "upnp": [],
+   "ssdpServer": "",
+   "sddp": {
+    "type": "c4:control4_t4_8",
+    "manufacturer": "Control4",
+    "model": "T4 8\" Touch Screen",
+    "host": "c4-t4-kitchen"
+   },
+   "ubnt": null,
+   "onvif": null,
+   "beacon": null,
+   "netbios": null,
+   "sadp": null,
+   "dahua": null,
+   "foreign": false,
+   "subnetNote": "",
+   "addressing": {
+    "mode": "unknown",
+    "source": "",
+    "note": ""
+   },
+   "conflict": null
+  },
+  {
    "ip": "192.168.1.100",
    "mac": "DA:A1:19:12:34:56",
    "vendor": "Private (randomised) address",

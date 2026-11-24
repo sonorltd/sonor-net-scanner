@@ -1,4 +1,4 @@
-# Sonor Network Scanner · v1.6.4
+# Sonor Network Scanner · v1.6.5
 
 A commissioning scanner for AV / Control4 sites. It finds every device on the network and says what it is in AV terms (make, model, firmware, serial where the device publishes it), checks the site against the project's plan in the Network Map app, and prints an as-found IP schedule.
 
@@ -71,6 +71,11 @@ Not done yet: hosting the page at apps.sonor.co.uk (needs the `sonorltd/sonor-ne
 - **Check against project** shows the project's uploaded scans (one master table, filtered per project) and the office's Unassigned
   list (attach to a project). **Review** opens an uploaded scan here; Fill MACs / Mark reviewed calls `net_scan_apply`, which writes
   the revision note into Network Map's history (`sonor_revisions`, app `network-map`: who scanned, who reviewed, what changed).
+
+## v1.6.5 (2026-11-24): Zigbee probe, everything picked from lists
+- **Sonor Zigbee probe** (`zb-probe/`: ESP32-C6, receive only, found by the scan through `_sonor-zb._tcp`): **Find meshes** sends a beacon request on 11–26 and fills the site's mesh channels by itself (maker from the extended PAN id: Control4 `00:0F:FF`, Hue `00:17:88`; an unknown mesh goes to Heatmiser when a neoHub is on the LAN, else Other; each found mesh has a "which system" list). **Noise sweep** measures real energy per channel (dashed line on the chart, a column in the table, flags on busy mesh channels). **Meter** lists every node heard on a mesh, strongest first, with signal, LQI and a draft grade (Solid ≥ -75, Marginal ≥ -85); **Test here** saves the spot. All of it goes up with the scan (`netinfo.zigbee.found / energy / tests`).
+- Opening the Zigbee tab listens to the Wi-Fi and asks the probe for the meshes on its own.
+- **Dropdowns instead of typing**: mesh channels and the meter channel are lists; RF and Zigbee spots are picked from the Takeoffs plan rooms (or walk-test rooms) and the radio devices found, with "Type a place…" last; the RF frequency follows the hubs found (Somfy 433.42, Bond 433.92) until picked by hand; Tools fields suggest the devices, gateway, hostnames and subnets found.
 
 ## v1.6.4 (2026-11-24): Zigbee tab
 - **Zigbee** is its own tab, between Wi-Fi and RF. Type the channel each mesh uses (Control4, Heatmiser neo, Hue, other Thread / Lutron Type X) and press Listen (or Live): each mesh is checked against the Wi-Fi heard here and against the others (two meshes on one channel is flagged), Control4's best of 15 / 20 / 25 with reasons, the quietest free channels for another mesh, a per-channel chart and table, and the Zigbee hubs the scan found (Control4, Hue, neoHub). Channels go up with the scan (`netinfo.zigbee`).

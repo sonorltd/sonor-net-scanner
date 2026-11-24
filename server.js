@@ -14,7 +14,7 @@ const tools = require('./lib/tools');
 const { netinfo, speedtest } = require('./lib/netinfo');
 const wifi = require('./lib/wifi');
 
-const VERSION = '1.6.4';
+const VERSION = '1.6.5';
 const PORT = Number(process.env.PORT || 8050);
 const DATA = process.env.NETSCAN_DATA || path.join(__dirname, 'scans');
 const PUBLIC = path.join(__dirname, 'public');
@@ -101,6 +101,14 @@ const actions = {
     if (!net.isIp(ip || '')) return [400, { error: 'enter the probe IPv4 address' }];
     const url = `http://${ip}/${mhz ? 'freq?mhz=' + encodeURIComponent(mhz) : 'rssi'}`;
     const r = await new Promise((resolve, reject) => { const q = require('http').get(url, { timeout: 2000 }, (res) => { let b = ''; res.on('data', (d) => { b += d; }); res.on('end', () => { try { resolve(JSON.parse(b)); } catch { reject(new Error('Not a Sonor RF probe at ' + ip)); } }); }); q.on('timeout', () => q.destroy(new Error('The probe did not answer'))); q.on('error', reject); });
+    return [200, r];
+  },
+
+  // Zigbee tab: read a Sonor Zigbee probe (ESP32-C6, zb-probe/). op: scan (find meshes, ~5 s) | energy (noise per channel) | listen (meter on ch)
+  zbProbe: async ({ ip, op = 'listen', ch, reset } = {}) => {
+    if (!net.isIp(ip || '')) return [400, { error: 'pick the Zigbee probe' }];
+    const path = op === 'scan' ? 'scan' : op === 'energy' ? 'energy' : `listen?${ch ? 'ch=' + Number(ch) : ''}${reset ? '&reset=1' : ''}`;
+    const r = await new Promise((resolve, reject) => { const q = require('http').get(`http://${ip}/${path}`, { timeout: op === 'listen' ? 2000 : 9000 }, (res) => { let b = ''; res.on('data', (d) => { b += d; }); res.on('end', () => { try { resolve(JSON.parse(b)); } catch { reject(new Error('Not a Sonor Zigbee probe at ' + ip)); } }); }); q.on('timeout', () => q.destroy(new Error('The probe did not answer'))); q.on('error', reject); });
     return [200, r];
   },
 
