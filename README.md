@@ -1,4 +1,4 @@
-# Sonor Network Scanner · v1.1.0
+# Sonor Network Scanner · v1.2.0
 
 A commissioning scanner for AV / Control4 sites. It finds every device on the network and says what it is in AV terms (make, model, firmware, serial where the device publishes it), checks the site against the project's plan in the Network Map app, and prints an as-found IP schedule.
 
@@ -35,7 +35,7 @@ Styled like Network Map (graphite, DM Mono labels, purple tabs). Tick **Service 
 - **Plan column** (once a project plan is loaded): ✓ as planned, ! differs, + not in plan. Hover or tap it for the recommendation (DHCP reservation to add, address to set on the device, wrong service row, missing MAC…).
 - **Discovery**: one panel per protocol (SDDP, SADP, Dahua, UniFi, Bonjour, SSDP, ONVIF, AMX, Sonos, NetBIOS) with what each device said.
 - **Issues**: wrong subnet, IP conflicts, Hikvision not activated, no DHCP answer, still on a factory default address, set to DHCP, differs from the plan, unidentified.
-- **Tools**: live ping graph (loss, min / avg / max, jitter), port check (common AV ports or any list), traceroute, DNS lookup, Wake-on-LAN, subnet calculator. The device panel has Ping / Ports / Trace / Wake buttons.
+- **Tools**: live ping graph (loss, min / avg / max, jitter), port check (presets: common AV + network, control systems, TVs / projectors, audio, CCTV, network kit, remote-access exposure, 1 to 1024, or any list; each open port says what it usually is, with banners, page titles and a link; port reference in `public/data/portinfo.js`), traceroute, DNS lookup, Wake-on-LAN, subnet calculator. The device panel has Ping / Ports / Trace / Wake buttons.
 - **Check against project**: picks the project's plan from the Network Map app (`network_configs`) and lists Found / Wrong IP / Different device at this IP / Not found / Not in plan. **Fill missing MACs and serials into Network Map** writes only empty MAC / serial fields on matched devices, and refuses if the plan changed since it was loaded.
 - **IP schedule**: the as-found network on paper, grouped by service, with your names and notes. Print or save as PDF.
 
@@ -59,3 +59,15 @@ The project check needs your Sonor sign-in, so it works when the page is opened 
 `server.js` agent + API · `lib/scan.js` orchestration · `lib/discovery.js` mDNS / SSDP / SDDP / UniFi / ONVIF / beacons / NetBIOS · `lib/probes.js` ports + device pages · `lib/identify.js` rules · `lib/addressing.js` fixed / DHCP / conflicts · `lib/tools.js` ping, ports, trace, DNS, WOL · `lib/oui.js` + `data/oui.tsv` MAC registry (from the BSD-2 `oui-data` package, see `data/oui-LICENSE.txt`) · `public/index.html` the page · `pi/install.sh`.
 
 Not done yet: hosting the page at apps.sonor.co.uk (needs the `sonorltd/sonor-net-scanner` repo + gateway registration), reading the Araknis router's client list, OvrC (no dealer API exists).
+
+## v1.3.0 (2026-11-24)
+- **Network at a glance** (top of every tab, `lib/netinfo.js`, API `netinfo` / `speedtest`): this device (IP / mask / MAC / Wi-Fi name, band,
+  signal), gateway (MAC maker, ping), DNS servers (each tested), DHCP (OS lease + an active DHCP DISCOVER that lists **every** server
+  that answers: two = rogue DHCP), internet (Cloudflare / Google latency, DNS, captive portal, IPv6), WAN (public IP, ISP, ASN,
+  town via ipinfo.io; router's own WAN IP via UPnP IGD → **double NAT / CGNAT** flag) and an on-demand Cloudflare speed test.
+  Saved with each scan; network flags also appear on the Issues tab. The DHCP check needs UDP 68 (Pi service or admin).
+- **Upload** (top bar) → Supabase `net_scans` (migration `supabase/migrations/20261124200000_net_scans.sql`, applied). Project
+  picked automatically by matching the Wi-Fi name to Network Map's saved Wi-Fi; several matches = engineer picks; none = Unassigned.
+- **Check against project** shows the project's uploaded scans (one master table, filtered per project) and the office's Unassigned
+  list (attach to a project). **Review** opens an uploaded scan here; Fill MACs / Mark reviewed calls `net_scan_apply`, which writes
+  the revision note into Network Map's history (`sonor_revisions`, app `network-map`: who scanned, who reviewed, what changed).

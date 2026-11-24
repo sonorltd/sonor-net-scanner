@@ -11,8 +11,9 @@ const os = require('os');
 const net = require('./lib/net');
 const { scan } = require('./lib/scan');
 const tools = require('./lib/tools');
+const { netinfo, speedtest } = require('./lib/netinfo');
 
-const VERSION = '1.1.0';
+const VERSION = '1.3.0';
 const PORT = Number(process.env.PORT || 8050);
 const DATA = process.env.NETSCAN_DATA || path.join(__dirname, 'scans');
 const PUBLIC = path.join(__dirname, 'public');
@@ -25,6 +26,7 @@ let notes = readJson(NOTES, {});
 
 let state = { running: false, progress: null, error: null, lastId: null };
 let latest = null;
+let lastInfo = null; let speed = null;
 
 function listScans() {
   return fs.readdirSync(DATA).filter((f) => /^scan-.*\.json$/.test(f)).sort().reverse().map((f) => {
@@ -53,8 +55,9 @@ const actions = {
     const bad = list.filter((t) => !net.expandTarget(t).length);
     if (bad.length) return [400, { error: `Not a subnet or range: ${bad.join(', ')}. Use 192.168.1.0/24, 192.168.1 or 10.0.0.10-10.0.0.60.` }];
     state = { running: true, progress: { phase: 'starting', done: 0, total: 0 }, error: null, lastId: state.lastId };
+    const infoP = netinfo().catch(() => null);
     scan({ targets: list, ping, onProgress: (p) => { state.progress = p; } })
-      .then((s) => { s.label = String(label || '').slice(0, 80); saveScan(s); latest = s; state = { running: false, progress: null, error: null, lastId: s.id }; })
+      .then(async (s) => { s.netinfo = await infoP; lastInfo = s.netinfo || lastInfo; s.label = String(label || '').slice(0, 80); saveScan(s); latest = s; state = { running: false, progress: null, error: null, lastId: s.id }; })
       .catch((e) => { state = { running: false, progress: null, error: e.message, lastId: state.lastId }; });
     return [202, { started: true }];
   },
@@ -75,6 +78,13 @@ const actions = {
     fs.writeFileSync(NOTES, JSON.stringify(notes, null, 1));
     return [200, { notes }];
   },
+
+  // Network at a glance (top of the page). fresh=1 re-runs it; otherwise the last result (or the latest scan's).
+  netinfo: async ({ fresh } = {}) => {
+    if (fresh || !lastInfo) lastInfo = await netinfo();
+    return [200, { ...lastInfo, speed }];
+  },
+  speedtest: async () => { speed = await speedtest(); if (latest) { latest.speed = speed; saveScan(latest); } return [200, speed]; },
 
   // Tools tab
   ping: async ({ host } = {}) => [200, await tools.pingOnce(String(host || '').trim())],

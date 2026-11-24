@@ -77,6 +77,8 @@ body.svc-tint tr.dev:hover td { background: color-mix(in srgb, var(--c) 24%, tra
 .disc .what { color: var(--label); font-size: 12px; padding: 6px 12px 0; }
 .disc table td, .disc table th { padding-left: 12px; }
 .toolgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 12px; }
+.toolgrid .wide { grid-column: 1 / -1; }
+#portRes table td { vertical-align: top; }
 .out { font-family: var(--mono); font-size: 12px; background: var(--tabbar); border: 1px solid var(--edge); border-radius: 4px; padding: 8px 10px; margin-top: 8px; max-height: 260px; overflow: auto; white-space: pre-wrap; }
 canvas.graph { width: 100%; height: 110px; display: block; margin-top: 8px; background: var(--tabbar); border: 1px solid var(--edge); border-radius: 4px; }
 .stats { display: flex; gap: 14px; flex-wrap: wrap; margin-top: 6px; font-family: var(--mono); font-size: 11px; color: var(--muted); } .stats b { color: var(--text); font-weight: 500; }
@@ -108,13 +110,34 @@ a { color: var(--accent-c); }
 .paper table td { border-bottom: 1px solid #e3e3e3; color: #1d1d1f; font-size: 12px; }
 .paper tr.grp td { background: #fafafa; color: #1d1d1f; }
 .paper .chip { background: #f2f2f2; border-color: #ddd; color: #444; }
+
+/* Network at a glance (v1.3.0) */
+.glance { margin-bottom: 14px; }
+.glance .ghead { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+.glance .ghead .sum { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.glance .ghead .sum b { color: var(--text); font-weight: 500; }
+.gcards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+.gcard { background: var(--card); border: 1px solid var(--edge); border-radius: 6px; padding: 9px 12px 10px; border-top: 3px solid var(--c, var(--edge)); min-width: 0; }
+.gcard .lbl { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.gcard .big { font-family: var(--mono); font-size: 17px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gcard .ln { font-size: 12px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; }
+.gcard .ln b { color: var(--text); font-weight: 500; }
+.gcard.ok { --c: var(--ok); } .gcard.warn { --c: var(--warn); } .gcard.bad { --c: var(--bad); }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--c, var(--dim)); margin-right: 5px; }
+.dot.ok { --c: var(--ok); } .dot.warn { --c: var(--warn); } .dot.bad { --c: var(--bad); }
+.gflags { display: flex; flex-direction: column; gap: 6px; margin-bottom: 8px; }
+.gflag { border-left: 3px solid var(--c); background: var(--card2); padding: 7px 10px; border-radius: 0 4px 4px 0; font-size: 13px; }
+.gflag.bad { --c: var(--bad); } .gflag.warn { --c: var(--warn); } .gflag.info { --c: var(--muted); }
+.glance.min .gcards, .glance.min .gflags { display: none; }
+@media (max-width: 560px) { .gcards { grid-template-columns: 1fr 1fr; gap: 6px; } .gcard { padding: 7px 9px; } .gcard .big { font-size: 13.5px; } .gcard .ln { font-size: 11px; } }
 @media print {
-  body { background: #fff; } #sonor-header, .bar, .tabs, .noprint, .drawer, .toast { display: none !important; }
+  body { background: #fff; } #sonor-header, .bar, .tabs, .glance, .noprint, .drawer, .toast { display: none !important; }
   main { padding: 0; max-width: none; } .paper { box-shadow: none; padding: 0; max-width: none; }
   tr { break-inside: avoid; } @page { size: A4 landscape; margin: 12mm; }
 }
 @media (max-width: 760px) { .toolgrid { grid-template-columns: 1fr; } .tabs button { padding: 12px 10px 10px; font-size: 11px; } .hide-sm { display: none; } .tiles { grid-template-columns: repeat(3, 1fr); gap: 6px; } .tile { padding: 6px 8px; } .tile b { font-size: 16px; } .tile span { font-size: 11px; } main { padding: 10px 10px 40px; } }
 </style>
+<script src="./data/portinfo.js"></script>
 </head>
 <body>
 <div id="sonor-header"></div>
@@ -126,6 +149,7 @@ a { color: var(--accent-c); }
   <input id="label" placeholder="Scan label, e.g. 1394 first fix" style="width:200px" class="hide-sm">
   <button id="scanBtn" class="primary">Scan network</button>
   <select id="scanPick" title="Earlier scans on this agent"></select>
+  <button id="uploadBtn" title="Send this scan to the office: it lands on the project whose Wi-Fi you are on">Upload</button>
   <div class="progress" id="prog" hidden><div></div></div>
   <span id="scanState" class="muted small" style="flex-basis:100%"></span>
 </div>
@@ -139,6 +163,18 @@ a { color: var(--accent-c); }
 </div>
 
 <main>
+  <section class="glance" id="glance" hidden>
+    <div class="ghead">
+      <span class="lbl">Network at a glance</span>
+      <span class="sum" id="gSum"></span>
+      <span style="flex:1"></span>
+      <button class="btn-sm" id="gSpeed" title="Download and upload test to Cloudflare (about 15 seconds, uses ~35 MB)">Speed test</button>
+      <button class="btn-sm" id="gRefresh" title="Check again now">Recheck</button>
+      <button class="btn-sm" id="gMin">Hide</button>
+    </div>
+    <div class="gflags" id="gFlags"></div>
+    <div class="gcards" id="gCards"></div>
+  </section>
   <section id="tab-devices">
     <div class="tiles" id="tiles"></div>
     <div class="filters">
@@ -170,10 +206,6 @@ a { color: var(--accent-c); }
         <canvas class="graph" id="pingGraph" width="760" height="220"></canvas>
         <div class="stats" id="pingStats"></div>
       </div>
-      <div class="panel"><span class="lbl">Port check</span>
-        <div class="row"><input id="portHost" class="mono" placeholder="192.168.1.10" style="flex:1"><input id="portList" class="mono" placeholder="common, or 80,443,5020 or 1-1024" style="flex:1"><button id="portGo" class="primary">Check</button></div>
-        <div class="out" id="portOut" hidden></div>
-      </div>
       <div class="panel"><span class="lbl">Traceroute</span>
         <div class="row"><input id="traceHost" class="mono" placeholder="8.8.8.8 or a device on another VLAN" style="flex:1"><button id="traceGo" class="primary">Trace</button></div>
         <div class="out" id="traceOut" hidden></div>
@@ -182,8 +214,18 @@ a { color: var(--accent-c); }
         <div class="row"><input id="dnsName" class="mono" placeholder="apps.sonor.co.uk or an IP" style="flex:1"><button id="dnsGo" class="primary">Look up</button></div>
         <div class="out" id="dnsOut" hidden></div>
       </div>
+      <div class="panel wide"><span class="lbl">Port check</span>
+        <div class="row" style="flex-wrap:wrap"><input id="portHost" class="mono" placeholder="Device IP, e.g. 192.168.1.10" list="ipList" style="flex:1;min-width:160px"><select id="portPreset" style="flex:1;min-width:200px"></select><button id="portGo" class="primary">Check</button></div>
+        <div class="row" id="portCustomRow" hidden><input id="portList" class="mono" placeholder="80,443,5020 or 1-1024 or 4998-5000" style="flex:1"></div>
+        <div class="muted small" id="portHelp" style="margin:6px 0 2px"></div>
+        <div id="portRes" hidden></div>
+        <details class="small" style="margin-top:8px"><summary class="muted">How to read the result · port reference</summary>
+          <p class="muted" style="margin:8px 0"><b>Open</b>: something is listening, so the service is on. <b>Refused</b>: the device is there but nothing listens on that port (switched off in its settings, or a different model). <b>No answer</b>: a firewall is dropping it, the device is off, or it is on a VLAN this scanner cannot route to. UDP services (DHCP, SNMP, mDNS, SSDP, UniFi discovery) cannot be seen by a TCP check: use the Discovery tab for those.</p>
+          <div style="max-height:320px;overflow:auto"><table id="portRef"></table></div>
+        </details>
+      </div>
       <div class="panel"><span class="lbl">Wake-on-LAN</span>
-        <div class="row"><input id="wolMac" class="mono" placeholder="00:11:22:33:44:55" style="flex:1" list="macList"><datalist id="macList"></datalist><button id="wolGo" class="primary">Wake</button></div>
+        <div class="row"><input id="wolMac" class="mono" placeholder="00:11:22:33:44:55" style="flex:1" list="macList"><datalist id="macList"></datalist><datalist id="ipList"></datalist><button id="wolGo" class="primary">Wake</button></div>
         <p class="muted small">Sends the magic packet to this network's broadcast. Works for TVs, AVRs and PCs with Wake-on-LAN switched on.</p>
         <div class="out" id="wolOut" hidden></div>
       </div>
@@ -206,9 +248,12 @@ a { color: var(--accent-c); }
     <div class="tiles" id="checkTiles"></div>
     <div class="row noprint" style="margin-bottom:8px" id="checkActions" hidden>
       <button id="fillMacs">Fill missing MACs and serials into Network Map</button>
+      <button id="markRev" hidden>Mark reviewed (adds a Network Map revision note)</button>
       <span class="muted small" id="fillState"></span>
     </div>
     <div style="overflow-x:auto"><table id="checkTable"></table></div>
+    <div class="panel" id="histPanel" style="margin-top:14px"><span class="lbl">Uploaded scans · <span id="histFor">pick a project</span></span><div id="histList" class="small muted">Sign in on apps.sonor.co.uk to see uploaded scans.</div></div>
+    <div class="panel" id="unassPanel" hidden><span class="lbl">Unassigned scans <span class="muted">· no project matched the Wi-Fi</span></span><div id="unassList"></div></div>
   </section>
 
   <section id="tab-schedule" hidden>
@@ -226,7 +271,7 @@ a { color: var(--accent-c); }
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.3.0';
 const HOSTED_URL = 'https://apps.sonor.co.uk/sonor-net-scanner/';
 if (window.SonorHeader) {
   SonorHeader.init({ appName: 'Network Scanner', repo: 'sonor-net-scanner' });
@@ -302,12 +347,32 @@ async function demoApi(action, data = {}) {
     case 'scan': demo.running = true; (async () => { for (const [ph, t] of [['sweep', 254], ['listening', 1], ['probing', S.devices.length]]) for (let i = 0; i <= t; i += Math.ceil(t / 12)) { demo.prog = { phase: ph, done: i, total: t, found: Math.min(i, S.devices.length) }; await sleep(140); } demo.running = false; demo.prog = null; })(); return { started: true };
     case 'probe': await sleep(900); return { device: S.devices.find((d) => d.ip === data.ip) };
     case 'ping': { await sleep(250); const d = S.devices.find((x) => x.ip === data.host); const lost = !d || Math.random() < 0.03; return lost ? { ok: false, ms: null } : { ok: true, ms: Math.round((1 + Math.random() * 4 + (d.service === 'client' ? Math.random() * 30 : 0)) * 10) / 10, via: 'icmp' }; }
-    case 'ports': { await sleep(1200); const d = S.devices.find((x) => x.ip === data.host); return { host: data.host, checked: 55, seconds: 1.2, refused: d ? 55 - d.ports.length : 0, open: d ? d.ports.map((p) => ({ ...p, banner: '' })) : [] }; }
+    case 'ports': { await sleep(1100); const d = S.devices.find((x) => x.ip === data.host); const pre = (window.PORTINFO.PRESETS.find((p) => p[0] === data.ports) || [])[3]; const list = Array.isArray(pre) ? [...new Set(pre)] : Object.keys(window.PORTINFO.PORTS).map(Number);
+      const open = d ? d.ports.map((p) => p.port).filter((p) => !Array.isArray(pre) || list.includes(p)) : []; const info = (p) => window.PORTINFO.info(p) || { name: '', what: '', group: '' };
+      const ban = (p) => p === 22 ? 'SSH-2.0-OpenSSH_8.4' : p === 80 && d && d.web && d.web[0] ? `“${d.web[0].title || ''}”${d.web[0].server ? ' · server ' + d.web[0].server : ''}` : p === 4998 && d && d.beacon ? d.beacon.firmware : '';
+      return { host: data.host, checked: list.length, seconds: 1.1, refused: d ? list.length - open.length : 0, silent: d ? 0 : list.length, open: open.map((p) => ({ port: p, ...info(p), banner: ban(p) })), knownClosed: d ? list.filter((p) => !open.includes(p)).map((p) => ({ port: p, ...info(p), state: 'closed' })) : [] }; }
     case 'trace': await sleep(1500); return { host: data.host, hops: S.devices.some((x) => x.ip === data.host) ? [{ hop: 1, ip: data.host, ms: 2.1 }] : [{ hop: 1, ip: '192.168.1.1', ms: 1.2 }, { hop: 2, ip: '100.64.0.1', ms: 6.8 }, { hop: 3, ip: '62.172.102.5', ms: 9.4 }, { hop: 4, ip: data.host, ms: 11.2 }] };
     case 'lookup': await sleep(300); return { name: data.name, addresses: /^\d+\.\d+\.\d+\.\d+$/.test(data.name) ? [data.name] : ['104.21.32.1', '172.67.150.2'], names: [] };
+    case 'netinfo': await sleep(data.fresh ? 1800 : 300); return DEMO_INFO();
+    case 'speedtest': await sleep(4000); return { at: new Date().toISOString(), downMbps: 71.4, upMbps: 18.2, latencyMs: 9, jitterMs: 1.4, server: 'speed.cloudflare.com' };
     case 'wol': await sleep(200); return { mac: data.mac, sentTo: ['255.255.255.255:9', '192.168.1.255:9'] };
   }
   throw new Error('Not in the demo');
+}
+function DEMO_INFO() {
+  const n = { at: new Date().toISOString(), seconds: 3.8, hostname: 'Demo rig', platform: 'android',
+    self: { ifname: 'wlan0', ip: '192.168.1.115', cidr: '192.168.1.0/24', prefix: 24, mask: '255.255.255.0', mac: '3C:28:6D:11:22:33', vendor: 'Google' },
+    wifi: { ssid: 'Sonor-Demo', signal: -58, signalUnit: 'dBm', band: '5 GHz', channel: '44' }, ipv6: [{ ifname: 'wlan0', address: '2a02:c7c:1234:5600::1a', temporary: 'global' }],
+    gateway: { ip: '192.168.1.1', mac: '24:A4:3C:AA:BB:CC', vendor: 'Ubiquiti', pingMs: 1.1, onSubnet: true },
+    dns: { servers: [{ server: '192.168.1.1', ok: true, ms: 12 }, { server: '1.1.1.1', ok: true, ms: 9 }], domain: 'localdomain' },
+    dhcp: { lease: { server: '192.168.1.1', leaseSeconds: 86400, domain: 'localdomain' }, servers: [{ server: '192.168.1.1', offered: '192.168.1.116', router: '192.168.1.1', mask: '255.255.255.0', dns: ['192.168.1.1', '1.1.1.1'], leaseSeconds: 86400 }, { server: '192.168.0.1', offered: '192.168.0.23', router: '192.168.0.1', mask: '255.255.255.0', dns: ['192.168.0.1'], leaseSeconds: 3600 }] },
+    internet: { online: true, latencyMs: 9, cloudflareMs: 9, googleMs: 11, dnsWorks: true, dnsMs: 14, captivePortal: false, ipv6: true, ipv6Ms: 12 },
+    wan: { ip: '81.2.69.160', isp: 'British Telecommunications PLC', asn: 'AS2856', city: 'Llandudno', region: 'Wales', country: 'GB', ipv6: '2a02:c7c:1234:5600::1a' },
+    router: { wanIp: '192.168.0.10', router: '192.168.1.1', model: 'UniFi Dream Machine Pro' } };
+  n.flags = [
+    { level: 'bad', title: '2 DHCP servers answering', text: '192.168.1.1 and 192.168.0.1 are both handing out addresses. Turn DHCP off on one (often the ISP box or a second router). Devices will get random settings until then.' },
+    { level: 'warn', title: 'Double NAT', text: "The router's WAN address 192.168.0.10 is private, so there is another router in front (usually the ISP box). Put the ISP box in modem / bridge mode or DMZ the router." }];
+  return n;
 }
 function connectAgent(addr) {
   addr = addr.trim().replace(/^https?:\/\//, '').replace(/\/.*$/, '');
@@ -354,6 +419,7 @@ async function refresh() {
     $('#targets').placeholder = `Subnets to scan (blank = ${agent.interfaces.map((i) => i.cidr).join(', ') || 'none'})`;
     if (window.SonorHeader) SonorHeader.updateDbStatus('live', { local: 'Agent', bridge: 'Agent link', app: 'Tablet', demo: 'Demo data' }[mode]);
     renderScanState();
+    if (!netInfo) loadInfo(false);
     const { scans } = await api('scans');
     $('#scanPick').innerHTML = scans.length ? scans.map((s) => `<option value="${esc(s.id)}">${esc(new Date(s.startedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))} · ${s.count} devices${s.label ? ' · ' + esc(s.label) : ''}</option>`).join('') : '<option value="">No scans yet</option>';
     if (scans.length && (!scanData || agent.scan.lastId !== scanData.id)) await loadScan(scans[0].id, scans[1] && scans[1].id);
@@ -381,6 +447,7 @@ async function loadScan(id, prevId) {
   if (prevId) { try { prevScan = await api('results', { id: prevId }); } catch {} }
   $('#scanPick').value = id;
   render();
+  if (scanData.netinfo) { netInfo = { ...scanData.netinfo, speed: scanData.speed || (netInfo && netInfo.speed) }; renderGlance(); renderIssues(); }
 }
 function renderScanState() {
   const s = agent && agent.scan;
@@ -457,6 +524,7 @@ const hideTip = () => { if (tipEl) tipEl.hidden = true; };
 
 // ── Devices tab ───────────────────────────────────────────
 function render() {
+  if ($('#ipList') && scanData) $('#ipList').innerHTML = scanData.devices.map((d) => `<option value="${esc(d.ip)}">${esc(nameOf(d) || modelLine(d) || d.kind || '')}</option>`).join('');
   renderScanState();
   const has = !!(scanData && scanData.devices.length);
   $('#noScan').hidden = has; $('#devTable').hidden = !has;
@@ -587,6 +655,7 @@ async function loadProjects() {
     $('#projPick').innerHTML = '<option value="">Pick a project with a network plan…</option>' + rows.map((r) => `<option value="${esc(r.project_id)}">${esc((r.projects && (r.projects.ref || r.projects.name)) || r.project_id)}${r.projects && r.projects.ref && r.projects.name ? ' · ' + esc(r.projects.name) : ''}</option>`).join('');
     const last = store.get('project', ''); if (last && rows.some((r) => r.project_id === last)) $('#projPick').value = last;
     $('#projState').textContent = rows.length ? '' : 'No plans visible. Open this page from apps.sonor.co.uk while signed in.';
+    loadHistory();
   } catch (e) {
     if (mode === 'demo') { $('#projState').textContent = 'Demo: using the sample plan.'; return useDemoPlan(); }
     if (mode === 'app') { $('#projState').textContent = 'The project check needs a Sonor sign-in, which the tablet app does not have yet. Use it from apps.sonor.co.uk for now.'; return; }
@@ -603,7 +672,7 @@ async function loadPlan() {
     plan = { projectId: pid, rowId: row.id, revision: row.revision, updatedAt: row.updated_at, name: (row.projects && (row.projects.ref || row.projects.name)) || '', config: cfg,
       devices: (cfg.devices || []).map((d, i) => ({ ...d, _i: i, _ip: planIp(cfg, d), _mac: normMac(d.mac) })).filter((d) => d.takeoffStatus !== 'removed') };
     $('#projState').textContent = `${plan.devices.length} planned devices · plan saved ${new Date(row.updated_at).toLocaleString('en-GB')}`;
-    buildAdvice(); renderCheck(); renderTable(); renderIssues();
+    buildAdvice(); renderCheck(); renderTable(); renderIssues(); loadHistory();
   } catch (e) { toast(e.message, true); }
 }
 function compare() {
@@ -638,7 +707,7 @@ function renderCheck() {
     <div class="tile" style="--c:var(--bad)"><b>${c('bad')}</b><span>Planned, not found</span></div><div class="tile" style="--c:var(--line)"><b>${c('info')}</b><span>Not addressed in plan</span></div>
     <div class="tile" style="--c:var(--accent-c)"><b>${extra.length}</b><span>On network, not in plan</span></div>`;
   const fillable = rows.filter((r) => r.f && r.status[0] === 'ok' && ((!r.p._mac && r.f.mac && !r.f.randomMac) || (!r.p.serial && r.f.serial))).length;
-  $('#checkActions').hidden = false; $('#fillMacs').disabled = !fillable; $('#fillMacs').textContent = `Fill ${fillable} missing MAC${fillable === 1 ? '' : 's'} / serials into Network Map`;
+  $('#checkActions').hidden = false; $('#fillMacs').disabled = !fillable; $('#markRev').hidden = !(review && review.status !== 'applied' && review.project_id === plan.projectId); $('#fillMacs').textContent = `Fill ${fillable} missing MAC${fillable === 1 ? '' : 's'} / serials into Network Map`;
   let html = '<thead><tr><th>Status</th><th>Planned device</th><th>Location</th><th>Planned IP</th><th>Planned MAC</th><th>Found</th><th>Found MAC · firmware</th></tr></thead><tbody>';
   const order = { warn: 0, bad: 1, ok: 2, info: 3 };
   for (const r of rows.slice().sort((a, b) => order[a.status[0]] - order[b.status[0]] || ipNum(a.p._ip || '255.255.255.255') - ipNum(b.p._ip || '255.255.255.255'))) {
@@ -671,15 +740,97 @@ async function fillMacs() {
     await rest(`/network_configs?id=eq.${row.id}&updated_at=eq.${encodeURIComponent(row.updated_at)}`, { method: 'PATCH', headers: { Prefer: 'return=minimal' }, body: JSON.stringify({ config: cfg, revision: (row.revision || 0) + 1, updated_at: new Date().toISOString() }) });
     toast(`Filled ${n} field${n === 1 ? '' : 's'} in Network Map`); $('#fillState').textContent = 'Reload Network Map to see them.';
     await loadPlan();
+    if (review && review.status !== 'applied') await markReviewed(`Filled ${n} missing MAC / serial field${n === 1 ? '' : 's'} from the scan.`);
   } catch (e) { toast('Could not save: ' + e.message, true); }
 }
+
+
+// ── Upload to the office (net_scans; the one exception to local-only) ──
+// Seamless: the scan lands on the project whose saved Wi-Fi (Network Map) matches the Wi-Fi this scanner is on.
+// One match = straight in. Several = the engineer picks. None = "Unassigned" for the office to attach.
+let review = null; // { id, project_id } when an uploaded scan is open for review
+const normSsid = (x) => String(x || '').trim().toLowerCase();
+async function projectsForSsid(ssid) {
+  const rows = await rest('/network_configs?select=project_id,config->ssids,projects(name,ref)&limit=500');
+  const all = rows.map((r) => ({ id: r.project_id, name: (r.projects && [r.projects.ref, r.projects.name].filter(Boolean).join(' · ')) || r.project_id, ssids: (r.ssids || []).map((x) => x.label).filter(Boolean) }));
+  return { all, hits: ssid ? all.filter((p) => p.ssids.some((x) => normSsid(x) === normSsid(ssid))) : [] };
+}
+function compactDevice(d) { const { upnp, services, ports, web, ...rest } = d; return { ...rest, ports: (ports || []).map((p) => ({ port: p.port, name: p.name })), services: (services || []).slice(0, 12).map((x) => ({ type: x.type, name: x.name, port: x.port })), upnp: (upnp || []).slice(0, 2).map((u) => ({ friendlyName: u.friendlyName, manufacturer: u.manufacturer, modelName: u.modelName, serial: u.serial })), web: (web || []).slice(0, 2).map((w) => ({ port: w.port, title: w.title, server: w.server })) }; }
+async function uploadScan() {
+  if (!scanData) return toast('Run a scan first', true);
+  if (mode === 'demo') return toast('Demo: in real use this sends the scan to the office and files it under the project on this Wi-Fi.');
+  const btn = $('#uploadBtn'); btn.disabled = true; btn.textContent = 'Uploading…';
+  try {
+    const info = scanData.netinfo || netInfo || {}; const ssid = (info.wifi && info.wifi.ssid) || '';
+    let project = null; let matched = null;
+    try {
+      const { all, hits } = await projectsForSsid(ssid);
+      if (hits.length === 1) { project = hits[0]; matched = 'ssid'; }
+      else {
+        const list = hits.length ? hits : all;
+        const pick = prompt(`${hits.length ? `${hits.length} projects use the Wi-Fi "${ssid}".` : ssid ? `No project has the Wi-Fi "${ssid}" saved.` : 'Could not read the Wi-Fi name.'} Type the number of the project, or leave blank to send it to the office unassigned:\n\n` + list.slice(0, 30).map((p, i) => `${i + 1}. ${p.name}`).join('\n'), '');
+        if (pick === null) throw new Error('cancelled');
+        const n = Number(pick); if (n >= 1 && n <= list.length) { project = list[n - 1]; matched = 'picked'; }
+      }
+    } catch (e) { if (e.message === 'cancelled') throw e; throw new Error('Uploading needs a Sonor sign-in: open the scanner from apps.sonor.co.uk'); }
+    const row = { project_id: project ? project.id : null, status: project ? 'pending' : 'unassigned', matched_by: matched, ssid: ssid || null, scanned_at: scanData.startedAt,
+      agent: mode === 'app' ? 'tablet' : `agent:${(agent && agent.hostname) || ''}`, app_version: APP_VERSION, subnets: scanData.targets || [], device_count: scanData.devices.length,
+      label: scanData.label || null, netinfo: info.at ? { ...info, speed: info.speed || scanData.speed || null } : null, devices: scanData.devices.map(compactDevice),
+      check_result: plan && plan.projectId === (project && project.id) ? (() => { const c = compare(); return { ok: c.rows.filter((r) => r.status[0] === 'ok').length, warn: c.rows.filter((r) => r.status[0] === 'warn').length, missing: c.rows.filter((r) => r.status[0] === 'bad').length, extra: c.extra.length }; })() : null };
+    await rest('/net_scans', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(row) });
+    toast(project ? `Uploaded to ${project.name}${matched === 'ssid' ? ` (matched by Wi-Fi "${ssid}")` : ''}` : 'Uploaded. The office will attach it to a project.');
+    if (project) { store.set('project', project.id); }
+    loadHistory();
+  } catch (e) { if (e.message !== 'cancelled') toast(e.message, true); }
+  btn.disabled = false; btn.textContent = 'Upload';
+}
+const fmtWhen = (t) => new Date(t).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const STATUS_PILL = { pending: ['warn', 'To review'], applied: ['ok', 'Applied'], dismissed: ['info', 'Dismissed'], unassigned: ['bad', 'Unassigned'] };
+async function loadHistory() {
+  if (mode === 'demo') { $('#histList').textContent = 'Demo: uploaded scans for the project show here, newest first, with Review / Dismiss for the office.'; return; }
+  const pid = $('#projPick').value;
+  try {
+    const sel = 'id,project_id,project_name,project_ref,status,matched_by,ssid,scanned_by,scanned_at,agent,device_count,label,reviewed_by,reviewed_at,review_note,wan_ip,isp,flag_count';
+    const [mine, un] = await Promise.all([pid ? rest(`/v_net_scans?project_id=eq.${pid}&select=${sel}&order=scanned_at.desc&limit=30`) : Promise.resolve([]), rest(`/v_net_scans?status=eq.unassigned&select=${sel}&order=scanned_at.desc&limit=30`)]);
+    $('#histFor').textContent = pid ? ($('#projPick').selectedOptions[0] || {}).textContent || '' : 'pick a project';
+    const row = (r, unassigned) => `<tr><td><span class="pill ${STATUS_PILL[r.status][0]}">${STATUS_PILL[r.status][1]}</span></td><td class="mono">${esc(fmtWhen(r.scanned_at))}</td><td>${esc(r.scanned_by || '')}<div class="muted small">${esc(r.agent || '')}${r.ssid ? ' · Wi-Fi ' + esc(r.ssid) : ''}</div></td><td>${r.device_count} devices${r.flag_count ? ` · <span style="color:var(--warn)">${r.flag_count} network flag${r.flag_count === 1 ? '' : 's'}</span>` : ''}<div class="muted small">${esc([r.wan_ip, r.isp].filter(Boolean).join(' · '))}</div></td>
+      <td class="small">${r.reviewed_by ? `${esc(r.reviewed_by)} · ${esc(fmtWhen(r.reviewed_at))}${r.review_note ? `<div class="muted">${esc(r.review_note)}</div>` : ''}` : ''}</td>
+      <td style="white-space:nowrap">${unassigned ? `<select data-assign="${r.id}" style="max-width:220px"><option value="">Attach to project…</option>${[...$('#projPick').options].filter((o) => o.value).map((o) => `<option value="${esc(o.value)}">${esc(o.textContent)}</option>`).join('')}</select>` : r.status === 'pending' ? `<button class="btn-sm" data-review="${r.id}">Review</button> <button class="btn-sm" data-dismiss="${r.id}">Dismiss</button>` : `<button class="btn-sm" data-review="${r.id}">Open</button>`}</td></tr>`;
+    $('#histList').innerHTML = mine.length ? `<table>${mine.map((r) => row(r)).join('')}</table>` : pid ? '<div class="muted small" style="padding:6px 0">No uploads for this project yet.</div>' : '';
+    $('#unassPanel').hidden = !un.length; $('#unassList').innerHTML = un.length ? `<table>${un.map((r) => row(r, true)).join('')}</table>` : '';
+    document.querySelectorAll('[data-review]').forEach((b) => b.onclick = () => openUpload(b.dataset.review));
+    document.querySelectorAll('[data-dismiss]').forEach((b) => b.onclick = async () => { const why = prompt('Dismiss this scan? Reason (optional):', ''); if (why === null) return; try { await rest('/rpc/net_scan_dismiss', { method: 'POST', body: JSON.stringify({ p_scan: b.dataset.dismiss, p_note: why || null }) }); toast('Dismissed'); loadHistory(); } catch (e) { toast(e.message, true); } });
+    document.querySelectorAll('[data-assign]').forEach((s) => s.onchange = async () => { if (!s.value) return; try { await rest('/rpc/net_scan_assign', { method: 'POST', body: JSON.stringify({ p_scan: s.dataset.assign, p_project: s.value }) }); toast('Attached'); $('#projPick').value = s.value; loadHistory(); } catch (e) { toast(e.message, true); } });
+  } catch (e) { $('#histList').textContent = 'Uploaded scans need a Sonor sign-in (open from apps.sonor.co.uk).'; }
+}
+// Office review: open an uploaded scan as if it had just been run here, load its project's plan, then Fill / Mark reviewed.
+async function openUpload(id) {
+  try {
+    const [r] = await rest(`/net_scans?id=eq.${id}&select=*`);
+    scanData = { id: 'upload-' + r.id, startedAt: r.scanned_at, seconds: 0, targets: r.subnets || [], devices: r.devices || [], label: r.label, netinfo: r.netinfo, notes: {} };
+    notes = {}; prevScan = null; review = { id: r.id, project_id: r.project_id, status: r.status };
+    if (r.netinfo) { netInfo = r.netinfo; renderGlance(); }
+    if (r.project_id) { $('#projPick').value = r.project_id; await loadPlan(); }
+    render(); renderCheck();
+    $('#scanState').textContent = `Reviewing an uploaded scan: ${r.scanned_by || ''} · ${fmtWhen(r.scanned_at)} · ${r.device_count} devices${r.ssid ? ' · Wi-Fi ' + r.ssid : ''}`;
+    toast('Uploaded scan opened. Check it, fill MACs if wanted, then Mark reviewed.');
+  } catch (e) { toast(e.message, true); }
+}
+async function markReviewed(summary) {
+  if (!review || review.status === 'applied') return;
+  const note = prompt('Revision note for Network Map (who scanned and who reviewed are added for you):', summary || 'Checked against the plan.');
+  if (note === null) return;
+  try { await rest('/rpc/net_scan_apply', { method: 'POST', body: JSON.stringify({ p_scan: review.id, p_applied: { summary: summary || null }, p_note: note, p_app_version: APP_VERSION }) }); review.status = 'applied'; toast('Reviewed: revision note added to Network Map'); loadHistory(); renderCheck(); }
+  catch (e) { toast(e.message, true); }
+}
+$('#uploadBtn').onclick = uploadScan;
 
 // ── Demo plan (so the plan column, tooltips and Check tab can be tried) ──
 async function useDemoPlan() {
   const cfg = await (await fetch('data/demo-plan.json')).json();
   plan = { projectId: 'demo', rowId: 0, revision: 1, updatedAt: '', name: cfg.name, config: cfg, devices: cfg.devices.map((d, i) => ({ ...d, _i: i, _ip: planIp(cfg, d), _mac: normMac(d.mac) })) };
   $('#projPick').innerHTML = `<option value="demo">${esc(cfg.name)}</option>`; $('#fillMacs').disabled = true;
-  buildAdvice(); renderCheck(); renderTable(); renderIssues();
+  buildAdvice(); renderCheck(); renderTable(); renderIssues(); loadHistory();
 }
 
 // ── Discovery tab: one panel per protocol ─────────────────
@@ -706,6 +857,35 @@ function renderDiscovery() {
   $('#discList').querySelectorAll('tr.dev').forEach((tr) => tr.onclick = () => openDrawer(tr.dataset.ip));
 }
 
+
+// ── Port check (presets + what each port means) ──
+const PI = window.PORTINFO || { PRESETS: [], PORTS: {}, info: () => null };
+const GROUP_C = { control: 'var(--svc-control, #e67eb1)', tv: 'var(--svc-video, #78ba57)', audio: 'var(--svc-audio, #4bb9d3)', cctv: 'var(--svc-cctv, #ad9978)', network: 'var(--svc-network, #b7b1a7)', web: 'var(--svc-network, #b7b1a7)', remote: '#ec6061' };
+function initPorts() {
+  $('#portPreset').innerHTML = PI.PRESETS.map(([id, l, , list]) => `<option value="${id}">${esc(l)}${Array.isArray(list) ? ` (${new Set(list).size})` : ''}</option>`).join('') + '<option value="custom">Custom list or range…</option>';
+  const help = () => { const v = $('#portPreset').value; $('#portCustomRow').hidden = v !== 'custom'; const p = PI.PRESETS.find((x) => x[0] === v); $('#portHelp').textContent = p ? p[2] : 'Type ports separated by commas, or a range like 1-1024 (up to 2,048 ports).'; };
+  $('#portPreset').onchange = help; help();
+  $('#portRef').innerHTML = '<thead><tr><th>Port</th><th>Service</th><th>Usually</th></tr></thead><tbody>' + Object.entries(PI.PORTS).map(([p, [n, w, g]]) => `<tr><td class="mono"><span class="sw" style="--c:${GROUP_C[g] || 'var(--line)'}"></span>${p}${PI.UDP.includes(Number(p)) ? ' <span class="muted">udp</span>' : ''}</td><td>${esc(n)}</td><td class="small muted">${esc(w)}</td></tr>`).join('') + '</tbody>';
+}
+async function runPorts() {
+  const host = $('#portHost').value.trim(); if (!host) return toast('Enter a device IP', true);
+  const spec = $('#portPreset').value === 'custom' ? $('#portList').value.trim() : $('#portPreset').value;
+  const btn = $('#portGo'); btn.disabled = true; btn.textContent = 'Checking…'; $('#portRes').hidden = false; $('#portRes').innerHTML = '<div class="muted small" style="padding:8px 0">Knocking on each port…</div>';
+  try {
+    const r = await api('ports', { host, ports: spec });
+    const d = scanData && scanData.devices.find((x) => x.ip === host);
+    const head = `<div class="small" style="margin:8px 0"><b>${r.open.length} open</b> · ${r.refused} refused · ${r.silent || 0} no answer · ${r.checked} checked in ${r.seconds}s${d ? ` · <a href="#" id="portDev">${esc(nameOf(d) || modelLine(d) || d.kind)}</a>` : ''}</div>`;
+    const verdict = !r.open.length && !r.refused ? '<div class="advice" style="--c:var(--bad)"><b>Nothing answered at all.</b> The device is off, a firewall drops everything, or it is on a VLAN with no route from here. Try Ping and Trace.</div>'
+      : !r.open.length ? '<div class="advice" style="--c:var(--warn)"><b>The device is there but none of these ports are open.</b> Try another preset, or "Ports 1 to 1024".</div>' : '';
+    const rows = r.open.map((o) => `<tr><td class="mono"><span class="sw" style="--c:${GROUP_C[o.group] || 'var(--line)'}"></span>${o.port}</td><td>${esc(o.name || '—')}</td><td class="small">${esc(o.what || 'Not a port we know: check the maker\'s docs')}${o.banner ? `<div class="muted mono" style="font-size:11px;margin-top:2px">${esc(o.banner)}</div>` : ''}</td><td>${[80, 8080, 8000, 9090, 5000].includes(o.port) ? `<a href="http://${esc(host)}:${o.port}/" target="_blank">open</a>` : [443, 8443, 5001].includes(o.port) ? `<a href="https://${esc(host)}:${o.port}/" target="_blank">open</a>` : ''}</td></tr>`).join('');
+    const closed = (r.knownClosed || []).filter((c) => PI.PRESETS.find((p) => p[0] === spec) || r.checked <= 200);
+    $('#portRes').innerHTML = head + verdict + (rows ? `<table><thead><tr><th>Port</th><th>Service</th><th>What it usually means</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : '')
+      + (closed.length ? `<details class="small" style="margin-top:6px"><summary class="muted">Known ports that are not open (${closed.length})</summary><div class="muted" style="columns:2;column-gap:20px;margin-top:6px">${closed.map((c) => `<div><span class="mono">${c.port}</span> ${esc(c.name)} <span style="opacity:.6">· ${c.state === 'closed' ? 'refused' : 'no answer'}</span></div>`).join('')}</div></details>` : '');
+    const pd = $('#portDev'); if (pd) pd.onclick = (e) => { e.preventDefault(); openDrawer(host); };
+  } catch (e) { $('#portRes').innerHTML = `<div class="advice" style="--c:var(--bad)">${esc(e.message)}</div>`; }
+  btn.disabled = false; btn.textContent = 'Check';
+}
+
 // ── Issues tab ────────────────────────────────────────────
 function issues() {
   if (!scanData) return [];
@@ -722,16 +902,70 @@ function issues() {
   return out;
 }
 function renderIssues() {
-  const list = issues(); const n = list.filter((i) => i.level !== 'info').reduce((a, i) => a + i.list.length, 0);
+  const list = issues(); const nf = ((netInfo && netInfo.flags) || []).filter((f) => f.level !== 'info');
+  const n = list.filter((i) => i.level !== 'info').reduce((a, i) => a + i.list.length, 0) + nf.length;
+  const netPanel = nf.length ? `<div class="panel" style="border-left:4px solid var(--${nf.some((f) => f.level === 'bad') ? 'bad' : 'warn'})"><div class="row" style="justify-content:space-between"><span class="lbl" style="color:var(--text)">Network</span><span class="pill ${nf.some((f) => f.level === 'bad') ? 'bad' : 'warn'}">${nf.length}</span></div>${nf.map((f) => `<p class="small" style="margin:6px 0 0"><b>${esc(f.title)}.</b> <span class="muted">${esc(f.text)}</span></p>`).join('')}</div>` : '';
   $('#issueCount').textContent = n; $('#issueCount').className = 'count' + (n ? '' : ' zero');
-  if (!scanData) { $('#issueList').innerHTML = '<div class="empty">No scan yet.</div>'; return; }
-  if (!list.length) { $('#issueList').innerHTML = '<div class="empty">No issues found on this scan.</div>'; return; }
+  if (!scanData) { $('#issueList').innerHTML = netPanel || '<div class="empty">No scan yet.</div>'; return; }
+  if (!list.length) { $('#issueList').innerHTML = netPanel || '<div class="empty">No issues found on this scan.</div>'; return; }
   const col = { bad: 'var(--bad)', warn: 'var(--warn)', info: 'var(--muted)' };
-  $('#issueList').innerHTML = list.map((i) => `<div class="panel" style="border-left:4px solid ${col[i.level]}"><div class="row" style="justify-content:space-between"><span class="lbl" style="color:var(--text)">${esc(i.title)}</span><span class="pill ${i.level === 'info' ? 'info' : i.level}">${i.list.length}</span></div>
+  $('#issueList').innerHTML = netPanel + list.map((i) => `<div class="panel" style="border-left:4px solid ${col[i.level]}"><div class="row" style="justify-content:space-between"><span class="lbl" style="color:var(--text)">${esc(i.title)}</span><span class="pill ${i.level === 'info' ? 'info' : i.level}">${i.list.length}</span></div>
     <p class="muted small" style="margin:6px 0 8px">${esc(i.fix)}</p>
     <table><tbody>${i.list.map((d) => `<tr class="dev" data-ip="${esc(d.ip)}" style="--c:${svcColor(d.service)}"><td class="mono" style="width:140px"><span class="sw" style="--c:${svcColor(d.service)}"></span>${esc(d.ip)}</td><td>${esc(nameOf(d) || modelLine(d) || d.kind || d.vendor || 'Unknown')}</td><td class="small muted">${esc(d.subnetNote || (d.conflict && d.conflict.sources.join(' · ')) || (d.addressing || {}).note || d.kind || '')}</td><td class="mono small">${esc(d.mac)}</td></tr>`).join('')}</tbody></table></div>`).join('');
   $('#issueList').querySelectorAll('tr.dev').forEach((tr) => tr.onclick = () => openDrawer(tr.dataset.ip));
 }
+
+
+// ── Network at a glance ───────────────────────────────────
+let netInfo = null;
+const leaseTxt = (s) => !s ? '' : s >= 86400 ? `${Math.round(s / 86400 * 10) / 10} day${s === 86400 ? '' : 's'}` : s >= 3600 ? `${Math.round(s / 360) / 10} h` : `${Math.round(s / 60)} min`;
+const msTxt = (m) => (m == null ? '—' : `${Math.round(m)} ms`);
+async function loadInfo(fresh) {
+  if (!fresh && scanData && scanData.netinfo && (!netInfo || netInfo.at < scanData.netinfo.at)) netInfo = { ...scanData.netinfo, speed: scanData.speed };
+  $('#glance').hidden = false;
+  if (fresh || !netInfo) {
+    $('#gSum').textContent = 'Checking the network…'; $('#gRefresh').disabled = true;
+    try { netInfo = await api('netinfo', fresh ? { fresh: 1 } : undefined); } catch (e) { $('#gSum').textContent = 'Could not read network details: ' + e.message; }
+    $('#gRefresh').disabled = false;
+  }
+  renderGlance(); renderIssues();
+}
+function renderGlance() {
+  const n = netInfo; if (!n) return;
+  const I = n.internet || {}; const G = n.gateway; const W = n.wan; const R = n.router; const S = n.self; const D = (n.dns && n.dns.servers) || []; const H = n.dhcp || {}; const F = n.flags || []; const SP = n.speed;
+  const worst = F.some((f) => f.level === 'bad') ? 'bad' : F.some((f) => f.level === 'warn') ? 'warn' : 'ok';
+  $('#gSum').innerHTML = `<span class="dot ${worst}"></span>${I.online ? `<b>Online</b> ${msTxt(I.latencyMs)}` : '<b>Offline</b>'}${W && W.ip ? ` · WAN <b>${esc(W.ip)}</b>` : ''}${W && W.isp ? ` · ${esc(W.isp)}` : ''}${G ? ` · GW <b>${esc(G.ip)}</b>` : ''}${n.wifi && n.wifi.ssid ? ` · Wi-Fi <b>${esc(n.wifi.ssid)}</b>` : ''} · <span title="${esc(new Date(n.at).toLocaleString('en-GB'))}">${esc(new Date(n.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }))}</span>`;
+  $('#gFlags').innerHTML = F.map((f) => `<div class="gflag ${f.level}"><b>${esc(f.title)}.</b> ${esc(f.text)}</div>`).join('');
+  const card = (lbl, cls, big, lines, extra = '') => `<div class="gcard ${cls}"><div class="lbl"><span>${lbl}</span>${extra}</div><div class="big" title="${esc(String(big).replace(/<[^>]+>/g, ''))}">${big}</div>${lines.filter(Boolean).map((l) => `<div class="ln">${l}</div>`).join('')}</div>`;
+  const ds = H.servers || [];
+  const cards = [
+    card('Internet', I.online ? (I.captivePortal || !I.dnsWorks ? 'warn' : 'ok') : 'bad', I.online ? `Online · ${msTxt(I.latencyMs)}` : 'Offline',
+      [I.online && `Cloudflare <b>${msTxt(I.cloudflareMs)}</b> · Google <b>${msTxt(I.googleMs)}</b>`, `Names (DNS) <b>${I.dnsWorks ? 'working' + (I.dnsMs != null ? ' · ' + msTxt(I.dnsMs) : '') : 'failing'}</b>`,
+        I.captivePortal ? '<b>Captive portal / filter in the way</b>' : '', `IPv6 <b>${I.ipv6 ? 'working' + (I.ipv6Ms != null ? ' · ' + msTxt(I.ipv6Ms) : '') : 'not available'}</b>`]),
+    card('WAN / ISP', W && W.ip ? (R && R.wanIp && R.wanIp !== W.ip ? 'warn' : 'ok') : '', W && W.ip ? esc(W.ip) : '—',
+      [W && W.isp && `<b>${esc(W.isp)}</b>${W.asn ? ' · ' + esc(W.asn) : ''}`, W && W.city && esc([W.city, W.region, W.country].filter(Boolean).join(', ')),
+        R && R.wanIp && `Router's WAN <b>${esc(R.wanIp)}</b>${R.wanIp !== (W && W.ip) ? ' (double NAT / CGNAT)' : ''}`, W && W.ipv6 && `IPv6 <span class="mono">${esc(W.ipv6)}</span>`, W && W.hostname && `<span class="mono">${esc(W.hostname)}</span>`]),
+    card('Gateway / router', G ? (G.onSubnet ? 'ok' : 'bad') : 'bad', G ? esc(G.ip) : 'None',
+      [G && (G.vendor || G.mac) && `${esc(G.vendor || '')} <span class="mono">${esc(G.mac || '')}</span>`, G && `Ping <b>${G.pingMs != null ? msTxt(G.pingMs) : 'no answer'}</b>`, R && R.model && esc(R.model), G && !G.onSubnet && '<b>Not on this subnet</b>'],
+      G ? `<button class="btn-sm" data-open="http://${esc(G.ip)}">Open</button>` : ''),
+    card('This device', S ? '' : 'bad', S ? `${esc(S.ip)}/${S.prefix}` : 'No address',
+      [S && `Mask <b>${esc(S.mask)}</b> · ${esc(S.ifname)}`, S && `<span class="mono">${esc(S.mac || '')}</span>`, n.wifi && n.wifi.ssid && `Wi-Fi <b>${esc(n.wifi.ssid)}</b>${n.wifi.band ? ' · ' + esc(n.wifi.band) : ''}${n.wifi.channel ? ' ch ' + esc(n.wifi.channel) : ''}${n.wifi.signal != null ? ` · <b>${n.wifi.signal}${n.wifi.signalUnit === '%' ? '%' : ' dBm'}</b>` : ''}`,
+        n.wifi && n.wifi.note && esc(n.wifi.note), (n.ipv6 || []).length && `IPv6 <span class="mono">${esc(n.ipv6[0].address)}</span>`]),
+    card('DNS servers', D.length ? (D.every((d) => d.ok) ? 'ok' : D.some((d) => d.ok) ? 'warn' : 'bad') : '', D.length ? D.map((d) => esc(d.server)).join(', ') : '—',
+      [...D.map((d) => `<span class="dot ${d.ok ? 'ok' : 'bad'}"></span><span class="mono">${esc(d.server)}</span> ${d.ok ? msTxt(d.ms) : '<b>' + esc(d.error || 'no answer') + '</b>'}`), n.dns && n.dns.domain && `Domain <b>${esc(n.dns.domain)}</b>`]),
+    card('DHCP', ds.length > 1 ? 'bad' : ds.length || (H.lease && H.lease.server) ? 'ok' : '', ds.length ? ds.map((d) => esc(d.server || d.from)).join(' + ') : (H.lease && H.lease.server ? esc(H.lease.server) : '—'),
+      [ds.length > 1 ? `<b>${ds.length} servers answered: rogue DHCP</b>` : '', ...ds.map((d) => `<span class="mono">${esc(d.server || d.from)}</span> offers ${esc(d.offered)}${d.router ? ' · gw ' + esc(d.router) : ''}${d.dns ? ' · dns ' + esc(d.dns.join(', ')) : ''}${d.leaseSeconds ? ' · ' + leaseTxt(d.leaseSeconds) : ''}`),
+        !ds.length && H.lease && H.lease.leaseSeconds && `Lease <b>${leaseTxt(H.lease.leaseSeconds)}</b>`, !ds.length && H.scanError && `Rogue check: ${esc(H.scanError)}`]),
+    card('Speed', SP ? (SP.downMbps < 10 ? 'warn' : 'ok') : '', SP ? `↓ ${SP.downMbps ?? '—'} · ↑ ${SP.upMbps ?? '—'} Mb/s` : 'Not run',
+      SP ? [`Latency <b>${msTxt(SP.latencyMs)}</b> · jitter <b>${SP.jitterMs ?? '—'} ms</b>`, esc(new Date(SP.at).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + ' · Cloudflare'] : ['Press <b>Speed test</b> above (about 15 s).']),
+  ];
+  $('#gCards').innerHTML = cards.join('');
+  $('#gCards').querySelectorAll('[data-open]').forEach((b) => b.onclick = () => window.open(b.dataset.open, '_blank'));
+}
+$('#gRefresh').onclick = () => loadInfo(true);
+$('#gMin').onclick = () => { const m = !$('#glance').classList.contains('min'); $('#glance').classList.toggle('min', m); $('#gMin').textContent = m ? 'Show' : 'Hide'; store.set('glanceMin', m); };
+if (store.get('glanceMin', false)) { $('#glance').classList.add('min'); $('#gMin').textContent = 'Show'; }
+$('#gSpeed').onclick = async (e) => { e.target.disabled = true; e.target.textContent = 'Testing…'; try { const r = await api('speedtest'); netInfo = { ...(netInfo || {}), speed: r }; renderGlance(); toast(`Speed: ↓ ${r.downMbps} / ↑ ${r.upMbps} Mb/s`); } catch (err) { toast(err.message, true); } e.target.disabled = false; e.target.textContent = 'Speed test'; };
 
 // ── Tools tab ─────────────────────────────────────────────
 function openTool(tool, value) {
@@ -817,13 +1051,14 @@ $('#projLoad').onclick = () => (mode === 'demo' ? useDemoPlan() : loadPlan());
 $('#svcTint').onchange = () => { store.set('svcTint', $('#svcTint').checked); document.body.classList.toggle('svc-tint', $('#svcTint').checked); };
 $('#dhcpPool').onchange = () => { const v = $('#dhcpPool').value.trim(); if (v && !parsePool(v)) return toast('Use a range like 192.168.1.100-199 or 192.168.1.100-192.168.1.199', true); store.set('dhcpPool', v); if (scanData) { buildAdvice(); renderTable(); renderIssues(); renderSchedule(); } };
 $('#pingGo').onclick = () => { if (pinging) { pinging = false; return; } if (!$('#pingHost').value.trim()) return toast('Enter an address to ping', true); pings = []; pinging = true; $('#pingGo').textContent = 'Stop'; drawPing(); pingLoop(); };
-$('#portGo').onclick = (e) => runTool(e.target, '#portOut', async () => { const r = await api('ports', { host: $('#portHost').value.trim(), ports: $('#portList').value.trim() || 'common' }); return `${r.checked} ports checked in ${r.seconds}s · ${r.open.length} open · ${r.refused} refused (host is up)` + (r.open.length ? '\n\n' + r.open.map((p) => `${String(p.port).padEnd(6)} ${p.label}${p.banner ? '  “' + p.banner + '”' : ''}`).join('\n') : (r.refused ? '' : '\n\nNothing answered at all: host down, firewalled, or on a VLAN with no route.')); });
+$('#portGo').onclick = () => runPorts(); initPorts();
+$('#portHost').addEventListener('keydown', (e) => { if (e.key === 'Enter') runPorts(); });
 $('#traceGo').onclick = (e) => runTool(e.target, '#traceOut', async () => { const r = await api('trace', { host: $('#traceHost').value.trim() }); return r.hops.map((h) => h.note || `${String(h.hop).padStart(2)}  ${(h.ip || '*').padEnd(16)} ${h.ms != null ? h.ms + ' ms' : ''}`).join('\n'); });
 $('#dnsGo').onclick = (e) => runTool(e.target, '#dnsOut', async () => { const r = await api('lookup', { name: $('#dnsName').value.trim() }); return (r.addresses.length ? r.addresses.join('\n') : 'No address found') + (r.names.length ? '\nName: ' + r.names.join(', ') : ''); });
 $('#wolGo').onclick = (e) => runTool(e.target, '#wolOut', async () => { const r = await api('wol', { mac: $('#wolMac').value.trim() }); return `Magic packet for ${r.mac} sent to ${r.sentTo.join(', ')}`; });
 $('#calcIn').oninput = () => { $('#calcOut').textContent = subnetCalc($('#calcIn').value || ($('#calcIn').placeholder.split(' ')[0])); };
 $('#calcOut').textContent = subnetCalc('192.168.20.0/22');
-$('#dhcpPool').value = store.get('dhcpPool', ''); $('#svcTint').checked = store.get('svcTint', true); document.body.classList.toggle('svc-tint', $('#svcTint').checked); $('#fillMacs').onclick = fillMacs;
+$('#dhcpPool').value = store.get('dhcpPool', ''); $('#svcTint').checked = store.get('svcTint', true); document.body.classList.toggle('svc-tint', $('#svcTint').checked); $('#fillMacs').onclick = fillMacs; $('#markRev').onclick = () => markReviewed('');
 $('#schClients').onchange = renderSchedule; $('#schPorts').onchange = renderSchedule; $('#printBtn').onclick = () => window.print();
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') { $('#drawer').classList.remove('open'); sel = null; } });
 $('#targets').value = store.get('targets', ''); $('#groupBy').value = store.get('group', 'service'); $('#hideClients').checked = store.get('hideClients', false);
