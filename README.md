@@ -1,4 +1,4 @@
-# Sonor Network Scanner · v1.2.0
+# Sonor Network Scanner · v1.4.0
 
 A commissioning scanner for AV / Control4 sites. It finds every device on the network and says what it is in AV terms (make, model, firmware, serial where the device publishes it), checks the site against the project's plan in the Network Map app, and prints an as-found IP schedule.
 
@@ -71,3 +71,10 @@ Not done yet: hosting the page at apps.sonor.co.uk (needs the `sonorltd/sonor-ne
 - **Check against project** shows the project's uploaded scans (one master table, filtered per project) and the office's Unassigned
   list (attach to a project). **Review** opens an uploaded scan here; Fill MACs / Mark reviewed calls `net_scan_apply`, which writes
   the revision note into Network Map's history (`sonor_revisions`, app `network-map`: who scanned, who reviewed, what changed).
+
+## v1.4.0 (2026-11-24): Wi-Fi tab
+- **Signal here**: live signal of this device's own Wi-Fi (dBm, quality, access point and its maker, channel, rate) with a graph, and a note when it roams to another AP.
+- **Wi-Fi map / walk test**: stand in a room, name it, press Record (5 readings + a ping to the router). Optional floor plan image: tap where you stand and each reading is drawn as a coloured heat spot. CSV export. Readings stay on the device and go up with the scan upload.
+- **Networks around / channel plan**: every network in the air (signal, band, channel, width, security, AP maker), 2.4 and 5 GHz channel charts with ours highlighted, the best channel for each band (2.4 GHz from 1/6/11 only; 5 GHz non-DFS first, quietest DFS shown), and flags: off-grid 2.4 GHz channels, 40 MHz on 2.4 GHz, open networks, WEP/TKIP/WPA1, mixed security on one SSID, crowded 2.4 GHz.
+- Sources: Pi / Linux `nmcli`, Mac `system_profiler` (no AP MACs on macOS), Windows `netsh`, Android app `WifiManager` scan results (needs location permission; Android allows 4 fresh scans per 2 minutes). On the Site Rig the radio runs the hotspot, so the survey is best from the tablet.
+- `lib/wifi.js` (survey, link, analyse), actions `wifiSurvey` and `wifiLink`. Test: `node test/wifi.test.js` (fake nmcli on PATH).

@@ -12,8 +12,9 @@ const net = require('./lib/net');
 const { scan } = require('./lib/scan');
 const tools = require('./lib/tools');
 const { netinfo, speedtest } = require('./lib/netinfo');
+const wifi = require('./lib/wifi');
 
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 const PORT = Number(process.env.PORT || 8050);
 const DATA = process.env.NETSCAN_DATA || path.join(__dirname, 'scans');
 const PUBLIC = path.join(__dirname, 'public');
@@ -87,6 +88,8 @@ const actions = {
   speedtest: async () => { speed = await speedtest(); if (latest) { latest.speed = speed; saveScan(latest); } return [200, speed]; },
 
   // Tools tab
+  wifiSurvey: async () => { const r = await wifi.survey(); if (latest) { latest.wifiSurvey = r; saveScan(latest); } return [200, r]; },
+  wifiLink: async () => [200, { link: await wifi.link() }],
   ping: async ({ host } = {}) => [200, await tools.pingOnce(String(host || '').trim())],
   ports: async ({ host, ports } = {}) => [200, await tools.portCheck(String(host || '').trim(), ports)],
   trace: async ({ host } = {}) => [200, await tools.trace(String(host || '').trim())],

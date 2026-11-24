@@ -1,0 +1,11 @@
+#!/bin/sh
+# fake nmcli for test/wifi.test.js
+cat <<'X'
+*:AA\:BB\:CC\:00\:00\:01:Sonor-Demo:44:5220 MHz:82:WPA2:540 Mbit/s:80 MHz
+ :AA\:BB\:CC\:00\:00\:02:Sonor-Demo:6:2437 MHz:70:WPA2:130 Mbit/s:20 MHz
+ :24\:A4\:3C\:00\:00\:03:BT-Hub:3:2422 MHz:55:WPA1 WPA2:65 Mbit/s:40 MHz
+ :24\:A4\:3C\:00\:00\:04:Neighbour:11:2462 MHz:40:WPA2:65 Mbit/s:20 MHz
+ :24\:A4\:3C\:00\:00\:05::1:2412 MHz:35:WPA2:65 Mbit/s:20 MHz
+ :24\:A4\:3C\:00\:00\:06:Cafe Free:36:5180 MHz:45::270 Mbit/s:40 MHz
+ :24\:A4\:3C\:00\:00\:07:Sonor-Demo:149:5745 MHz:60:WPA3:540 Mbit/s:80 MHz
+X

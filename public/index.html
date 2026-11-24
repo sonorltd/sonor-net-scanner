@@ -77,7 +77,7 @@ body.svc-tint tr.dev:hover td { background: color-mix(in srgb, var(--c) 24%, tra
 .disc .what { color: var(--label); font-size: 12px; padding: 6px 12px 0; }
 .disc table td, .disc table th { padding-left: 12px; }
 .toolgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 12px; }
-.toolgrid .wide { grid-column: 1 / -1; }
+.toolgrid .wide { grid-column: 1 / -1; } .toolgrid > .panel { min-width: 0; }
 #portRes table td { vertical-align: top; }
 .out { font-family: var(--mono); font-size: 12px; background: var(--tabbar); border: 1px solid var(--edge); border-radius: 4px; padding: 8px 10px; margin-top: 8px; max-height: 260px; overflow: auto; white-space: pre-wrap; }
 canvas.graph { width: 100%; height: 110px; display: block; margin-top: 8px; background: var(--tabbar); border: 1px solid var(--edge); border-radius: 4px; }
@@ -99,6 +99,19 @@ canvas.graph { width: 100%; height: 110px; display: block; margin-top: 8px; back
 .ev li { margin-bottom: 3px; }
 .toast { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); background: var(--panel2); border: 1px solid var(--line); padding: 10px 14px; border-radius: 10px; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; z-index: 60; }
 .toast.show { opacity: 1; } .toast.err { border-color: var(--bad); }
+.wmeter { display: flex; gap: 14px; align-items: center; }
+.wdbm { font: 500 34px var(--mono); min-width: 130px; } .wdbm small { font-size: 13px; color: var(--muted); }
+.wq { flex: 1; min-width: 0; } .wbar { height: 10px; background: var(--tabbar); border: 1px solid var(--edge); border-radius: 5px; overflow: hidden; margin-bottom: 6px; }
+.wbar > div { height: 100%; width: 0; background: var(--c, var(--muted)); transition: width .4s; }
+.wplan { position: relative; margin: 10px 0; border: 1px solid var(--edge); border-radius: 4px; overflow: hidden; background: #fff; }
+.wplan img { display: block; width: 100%; opacity: .85; } .wplan canvas { position: absolute; inset: 0; width: 100%; height: 100%; cursor: crosshair; }
+.wtip { position: absolute; left: 6px; bottom: 6px; background: rgba(0,0,0,.6); color: #ddd; padding: 2px 6px; border-radius: 3px; }
+.wrow { display: grid; grid-template-columns: 1fr 120px 64px; gap: 8px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--edge); font-size: 13px; }
+.wrow .sb { height: 8px; border-radius: 4px; background: var(--tabbar); overflow: hidden; } .wrow .sb > div { height: 100%; background: var(--c); }
+.wrow .m { font-family: var(--mono); font-size: 11px; color: var(--muted); } .wrow button { justify-self: end; }
+.wrec { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr)); gap: 8px; margin: 8px 0; }
+.wcharts { display: grid; grid-template-columns: 2fr 3fr; gap: 12px; } canvas.wch { height: 170px; }
+@media (max-width: 760px) { .wcharts { grid-template-columns: 1fr; } .wdbm { font-size: 26px; min-width: 100px; } .wrow { grid-template-columns: 1fr 90px 54px; } }
 .panel { background: var(--card); border: 1px solid var(--edge); border-radius: 6px; padding: 14px 16px; margin-bottom: 12px; }
 .panel > .lbl:first-child { display: block; margin-bottom: 10px; }
 .row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
@@ -158,6 +171,7 @@ a { color: var(--accent-c); }
   <button data-tab="discovery">Discovery</button>
   <button data-tab="issues">Issues<span class="count zero" id="issueCount">0</span></button>
   <button data-tab="check">Check against project</button>
+  <button data-tab="wifi">Wi-Fi</button>
   <button data-tab="tools">Tools</button>
   <button data-tab="schedule">IP schedule</button>
 </div>
@@ -197,6 +211,32 @@ a { color: var(--accent-c); }
 
   <section id="tab-issues" hidden>
     <div id="issueList"></div>
+  </section>
+
+  <section id="tab-wifi" hidden>
+    <div class="toolgrid">
+      <div class="panel"><span class="lbl">Signal here</span>
+        <div class="wmeter" id="wMeter"><div class="wdbm" id="wDbm">—</div><div class="wq"><div class="wbar"><div id="wBar"></div></div><div id="wQual" class="small muted">Press Start, then walk around: the number follows this device's own Wi-Fi.</div></div></div>
+        <div class="stats" id="wLinkStats"></div>
+        <canvas class="graph" id="wGraph" width="760" height="200"></canvas>
+        <div class="row" style="margin-top:8px"><button id="wGo" class="primary">Start</button><span class="muted small" id="wRoam"></span></div>
+      </div>
+      <div class="panel"><span class="lbl">Wi-Fi map · walk test</span>
+        <p class="muted small" style="margin:0 0 8px">Stand in each room, type its name and press <b>Record</b>. It takes 5 readings plus a ping to the router. Add a floor plan to drop each reading where you are standing.</p>
+        <div class="row"><input id="walkRoom" placeholder="Room, e.g. Kitchen" list="walkRooms" style="flex:1"><datalist id="walkRooms"></datalist><button id="walkGo" class="primary">Record</button></div>
+        <div class="row small" style="margin-top:8px;flex-wrap:wrap;gap:8px"><label class="btn-sm" style="cursor:pointer">Floor plan…<input type="file" id="walkPlan" accept="image/*" hidden></label><button class="btn-sm" id="walkCsv">CSV</button><button class="btn-sm" id="walkClear">Clear</button><span class="muted" id="walkSum"></span></div>
+        <div class="wplan" id="wPlan" hidden><img id="wPlanImg" alt="Floor plan"><canvas id="wHeat"></canvas><div class="muted small wtip" id="wPlanTip">Tap where you are standing, then Record.</div></div>
+        <div id="walkList"></div>
+      </div>
+      <div class="panel wide"><span class="lbl">Networks around · channel plan</span>
+        <div class="row" style="flex-wrap:wrap"><button id="survGo" class="primary">Survey</button><label class="small"><input type="checkbox" id="survMine"> Only our networks</label><input id="survQ" placeholder="Filter SSID, maker, channel…" style="flex:1;min-width:160px"><span class="muted small" id="survSum"></span></div>
+        <div class="gflags" id="survFlags" style="margin-top:10px"></div>
+        <div class="wrec" id="survRec"></div>
+        <div class="wcharts"><div><div class="lbl">2.4 GHz</div><canvas class="graph wch" id="ch24" width="760" height="240"></canvas></div><div><div class="lbl">5 GHz</div><canvas class="graph wch" id="ch5" width="1200" height="240"></canvas></div></div>
+        <div style="overflow-x:auto;margin-top:10px"><table id="survTable"></table></div>
+        <div class="muted small" id="survNote"></div>
+      </div>
+    </div>
   </section>
 
   <section id="tab-tools" hidden>
@@ -271,7 +311,7 @@ a { color: var(--accent-c); }
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.4.0';
 const HOSTED_URL = 'https://apps.sonor.co.uk/sonor-net-scanner/';
 if (window.SonorHeader) {
   SonorHeader.init({ appName: 'Network Scanner', repo: 'sonor-net-scanner' });
@@ -355,6 +395,9 @@ async function demoApi(action, data = {}) {
     case 'lookup': await sleep(300); return { name: data.name, addresses: /^\d+\.\d+\.\d+\.\d+$/.test(data.name) ? [data.name] : ['104.21.32.1', '172.67.150.2'], names: [] };
     case 'netinfo': await sleep(data.fresh ? 1800 : 300); return DEMO_INFO();
     case 'speedtest': await sleep(4000); return { at: new Date().toISOString(), downMbps: 71.4, upMbps: 18.2, latencyMs: 9, jitterMs: 1.4, server: 'speed.cloudflare.com' };
+    case 'wifiSurvey': { await sleep(2200); const r = await fetch('data/demo-wifi.json'); const j = await r.json(); j.at = new Date().toISOString(); return j; }
+    case 'wifiLink': { await sleep(120); demo.wt = (demo.wt || 0) + 1; const far = Math.floor(demo.wt / 25) % 2 === 1; const base = far ? -68 : -51; const sig = Math.round(base + Math.sin(demo.wt / 3) * 4 + (Math.random() * 4 - 2));
+      return { link: { ssid: 'Sonor-Demo', bssid: far ? '24:5A:4C:10:00:02' : '24:5A:4C:10:00:01', vendor: 'Ubiquiti', channel: far ? 149 : 44, band: '5 GHz', signal: sig, rate: far ? '390 Mb/s' : '866 Mb/s', quality: { label: sig >= -55 ? 'excellent' : sig >= -65 ? 'good' : 'fair: fine for browsing, marginal for 4K / video calls' } } }; }
     case 'wol': await sleep(200); return { mac: data.mac, sentTo: ['255.255.255.255:9', '192.168.1.255:9'] };
   }
   throw new Error('Not in the demo');
@@ -775,7 +818,7 @@ async function uploadScan() {
     } catch (e) { if (e.message === 'cancelled') throw e; throw new Error('Uploading needs a Sonor sign-in: open the scanner from apps.sonor.co.uk'); }
     const row = { project_id: project ? project.id : null, status: project ? 'pending' : 'unassigned', matched_by: matched, ssid: ssid || null, scanned_at: scanData.startedAt,
       agent: mode === 'app' ? 'tablet' : `agent:${(agent && agent.hostname) || ''}`, app_version: APP_VERSION, subnets: scanData.targets || [], device_count: scanData.devices.length,
-      label: scanData.label || null, netinfo: info.at ? { ...info, speed: info.speed || scanData.speed || null } : null, devices: scanData.devices.map(compactDevice),
+      label: scanData.label || null, netinfo: (info.at || survey || walk.length) ? { ...info, speed: info.speed || scanData.speed || null, wifiSurvey: survey ? { at: survey.at, networks: survey.networks.slice(0, 80), analysis: { counts: survey.analysis.counts, recommend: survey.analysis.recommend, flags: survey.analysis.flags } } : null, walk: walk.length ? walk : null } : null, devices: scanData.devices.map(compactDevice),
       check_result: plan && plan.projectId === (project && project.id) ? (() => { const c = compare(); return { ok: c.rows.filter((r) => r.status[0] === 'ok').length, warn: c.rows.filter((r) => r.status[0] === 'warn').length, missing: c.rows.filter((r) => r.status[0] === 'bad').length, extra: c.extra.length }; })() : null };
     await rest('/net_scans', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(row) });
     toast(project ? `Uploaded to ${project.name}${matched === 'ssid' ? ` (matched by Wi-Fi "${ssid}")` : ''}` : 'Uploaded. The office will attach it to a project.');
@@ -1016,6 +1059,137 @@ async function runTool(btn, out, fn) {
   try { $(out).textContent = await fn(); } catch (e) { $(out).textContent = e.message; } finally { btn.disabled = false; }
 }
 
+// ── Wi-Fi: live signal meter, walk test (Wi-Fi map on a floor plan), survey + channel plan ──
+const sigHex = (d) => (d == null ? '#8E8E93' : d >= -55 ? '#2fbf71' : d >= -65 ? '#7cc95a' : d >= -72 ? '#e3a72f' : d >= -80 ? '#e5784d' : '#e5484d');
+const sigPct = (d) => (d == null ? 0 : Math.max(0, Math.min(100, ((d + 95) / 60) * 100)));
+const sigWord = (d) => (d == null ? '' : d >= -55 ? 'excellent' : d >= -65 ? 'good' : d >= -72 ? 'fair' : d >= -80 ? 'weak' : 'unusable');
+let wTimer = null; let wHist = []; let wLast = null;
+async function wTick() {
+  try {
+    const { link } = await api('wifiLink');
+    if (link && wLast && link.bssid && wLast.bssid && link.bssid !== wLast.bssid) $('#wRoam').textContent = `Roamed to ${link.bssid}${link.vendor ? ' (' + link.vendor + ')' : ''} at ${new Date().toLocaleTimeString('en-GB')}`;
+    wLast = link; wHist.push({ t: Date.now(), d: link ? link.signal : null }); if (wHist.length > 150) wHist.shift(); drawMeter();
+  } catch (e) { toast(e.message, true); wStop(); }
+}
+function wStart() { if (wTimer) return; wHist = []; $('#wGo').textContent = 'Stop'; wTick(); wTimer = setInterval(wTick, mode === 'local' || mode === 'bridge' ? 2000 : 1000); }
+function wStop() { clearInterval(wTimer); wTimer = null; $('#wGo').textContent = 'Start'; }
+function drawMeter() {
+  const l = wLast; const d = l ? l.signal : null;
+  $('#wDbm').innerHTML = d != null ? `${d}<small> dBm</small>` : '—';
+  $('#wBar').style.width = sigPct(d) + '%'; $('#wBar').style.setProperty('--c', sigHex(d));
+  $('#wQual').textContent = l ? ((l.quality && l.quality.label) || sigWord(d)) : 'Not connected to Wi-Fi';
+  $('#wLinkStats').innerHTML = l ? [['Wi-Fi', esc(l.ssid || 'hidden')], ['AP', esc(l.bssid || '—') + (l.vendor ? ' · ' + esc(l.vendor) : '')], ['Channel', `${l.channel ?? '—'} · ${esc(l.band || '')}`], ['Rate', esc(l.rate || (l.linkMbps ? l.linkMbps + ' Mb/s' : '—'))]].map(([k, v]) => `<span>${k} <b>${v}</b></span>`).join('') : '';
+  const c = $('#wGraph'); const g = c.getContext('2d'); const W = c.width; const H = c.height; g.clearRect(0, 0, W, H);
+  const y = (v) => H - ((v + 95) / 65) * H;
+  g.font = '18px DM Mono, monospace'; g.textAlign = 'right';
+  for (const [v, col] of [[-55, '#2fbf71'], [-65, '#7cc95a'], [-72, '#e3a72f'], [-80, '#e5484d']]) { g.strokeStyle = col + '55'; g.setLineDash([6, 6]); g.beginPath(); g.moveTo(0, y(v)); g.lineTo(W, y(v)); g.stroke(); g.fillStyle = col; g.fillText(v, W - 6, y(v) - 4); }
+  g.setLineDash([]); if (!wHist.length) return;
+  const bw = W / 150; g.lineWidth = 3; let started = false;
+  wHist.forEach((p, i) => { const x = i * bw; if (p.d == null) { started = false; return; } g.strokeStyle = sigHex(p.d); if (!started) { g.beginPath(); g.moveTo(x, y(p.d)); started = true; } else { g.lineTo(x, y(p.d)); g.stroke(); g.beginPath(); g.moveTo(x, y(p.d)); } });
+}
+
+// walk test: readings per room, optionally placed on a floor plan → a Wi-Fi map
+let walk = store.get('walk', []); let walkPos = null;
+const WALK_ROOMS = ['Kitchen', 'Living room', 'Dining room', 'Hall', 'Cinema', 'Office', 'Master bedroom', 'Bedroom 2', 'Bedroom 3', 'Garden', 'Garage', 'Gym', 'Landing'];
+async function walkRecord() {
+  const room = $('#walkRoom').value.trim(); if (!room) return toast('Type the room you are standing in', true);
+  const btn = $('#walkGo'); btn.disabled = true; btn.textContent = 'Reading…';
+  try {
+    const reads = []; let last = null;
+    for (let i = 0; i < 5; i++) { const { link } = await api('wifiLink'); if (link) { last = link; if (link.signal != null) reads.push(link.signal); } await new Promise((r) => setTimeout(r, mode === 'local' || mode === 'bridge' ? 300 : 600)); }
+    if (!last) throw new Error('Not on Wi-Fi: join the site Wi-Fi first');
+    const gw = (netInfo && netInfo.gateway && netInfo.gateway.ip) || (scanData && scanData.gateways && scanData.gateways[0]) || '';
+    const pings = []; if (gw) for (let i = 0; i < 4; i++) { try { pings.push(await api('ping', { host: gw })); } catch { break; } }
+    const ok = pings.filter((p) => p.ok).map((p) => p.ms);
+    const avg = reads.length ? Math.round(reads.reduce((a, b) => a + b, 0) / reads.length) : null;
+    walk = walk.filter((w) => !(w.room.toLowerCase() === room.toLowerCase() && !walkPos && w.x == null));
+    walk.push({ room, at: new Date().toISOString(), signal: avg, min: reads.length ? Math.min(...reads) : null, max: reads.length ? Math.max(...reads) : null, ssid: last.ssid, bssid: last.bssid, vendor: last.vendor, channel: last.channel, band: last.band, rate: last.rate || (last.linkMbps ? last.linkMbps + ' Mb/s' : ''),
+      pingMs: ok.length ? +(ok.reduce((a, b) => a + b, 0) / ok.length).toFixed(1) : null, loss: pings.length ? Math.round(100 * (pings.length - ok.length) / pings.length) : null, x: walkPos ? walkPos.x : null, y: walkPos ? walkPos.y : null });
+    store.set('walk', walk); walkPos = null; $('#walkRoom').value = ''; renderWalk(); toast(`${room}: ${avg} dBm (${sigWord(avg)})`);
+  } catch (e) { toast(e.message, true); }
+  btn.disabled = false; btn.textContent = 'Record';
+}
+function renderWalk() {
+  $('#walkRooms').innerHTML = [...new Set([...walk.map((w) => w.room), ...WALK_ROOMS])].map((r) => `<option value="${esc(r)}">`).join('');
+  const aps = new Set(walk.map((w) => w.bssid).filter(Boolean)); const weak = walk.filter((w) => w.signal != null && w.signal < -72);
+  $('#walkSum').textContent = walk.length ? `${walk.length} reading${walk.length > 1 ? 's' : ''} · ${aps.size} access point${aps.size === 1 ? '' : 's'}${weak.length ? ` · ${weak.length} weak spot${weak.length > 1 ? 's' : ''}` : ''}` : '';
+  $('#walkList').innerHTML = walk.slice().sort((a, b) => (a.signal ?? -200) - (b.signal ?? -200)).map((w) => `<div class="wrow"><div><b>${esc(w.room)}</b> <span class="m">${w.x != null ? '📍 ' : ''}${esc(w.band || '')} ch ${esc(w.channel ?? '')} · ${esc(w.vendor || w.bssid || '')}${w.pingMs != null ? ` · router ${w.pingMs} ms` : ''}${w.loss ? ` · ${w.loss}% lost` : ''}</span></div><div><div class="sb"><div style="width:${sigPct(w.signal)}%;--c:${sigHex(w.signal)}"></div></div><span class="m">${w.signal ?? '—'} dBm · ${sigWord(w.signal)}</span></div><button class="btn-sm" data-wdel="${esc(w.at)}">✕</button></div>`).join('') || '<p class="muted small">No readings yet.</p>';
+  $('#walkList').querySelectorAll('[data-wdel]').forEach((b) => b.onclick = () => { walk = walk.filter((w) => w.at !== b.dataset.wdel); store.set('walk', walk); renderWalk(); });
+  drawHeat();
+}
+function drawHeat() {
+  const img = $('#wPlanImg'); const c = $('#wHeat'); if ($('#wPlan').hidden || !img.naturalWidth) return;
+  c.width = img.naturalWidth; c.height = img.naturalHeight; const g = c.getContext('2d'); g.clearRect(0, 0, c.width, c.height);
+  const R = Math.max(c.width, c.height) * 0.13; const pts = walk.filter((w) => w.x != null);
+  g.globalCompositeOperation = 'source-over';
+  for (const w of pts) { const x = w.x * c.width; const y = w.y * c.height; const grd = g.createRadialGradient(x, y, 0, x, y, R); const col = sigHex(w.signal); grd.addColorStop(0, col + 'aa'); grd.addColorStop(1, col + '00'); g.fillStyle = grd; g.beginPath(); g.arc(x, y, R, 0, Math.PI * 2); g.fill(); }
+  const fs = Math.max(14, c.width / 70); g.font = `600 ${fs}px DM Sans, sans-serif`; g.textAlign = 'center';
+  for (const w of pts) { const x = w.x * c.width; const y = w.y * c.height; g.fillStyle = sigHex(w.signal); g.strokeStyle = '#000'; g.lineWidth = fs / 6; g.beginPath(); g.arc(x, y, fs / 2.2, 0, Math.PI * 2); g.fill(); g.stroke(); const t = `${w.room} ${w.signal ?? ''}`; g.lineWidth = fs / 4; g.strokeStyle = 'rgba(0,0,0,.75)'; g.strokeText(t, x, y - fs); g.fillStyle = '#fff'; g.fillText(t, x, y - fs); }
+  if (walkPos) { const x = walkPos.x * c.width; const y = walkPos.y * c.height; g.strokeStyle = '#4bb9d3'; g.lineWidth = fs / 4; g.beginPath(); g.arc(x, y, fs, 0, Math.PI * 2); g.stroke(); }
+}
+function loadPlanImage(src) { const img = $('#wPlanImg'); img.onload = () => { $('#wPlan').hidden = false; drawHeat(); }; img.src = src; }
+function walkPlanFile(f) {
+  if (!f) return; const r = new FileReader();
+  r.onload = () => { const im = new Image(); im.onload = () => { const k = Math.min(1, 1600 / Math.max(im.width, im.height)); const cv = document.createElement('canvas'); cv.width = Math.round(im.width * k); cv.height = Math.round(im.height * k); cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height); const url = cv.toDataURL('image/jpeg', 0.8); store.set('walkPlan', url); loadPlanImage(url); }; im.src = r.result; };
+  r.readAsDataURL(f);
+}
+function walkCsv() {
+  if (!walk.length) return toast('No readings yet', true);
+  const rows = [['Room', 'Signal dBm', 'Min', 'Max', 'Quality', 'Wi-Fi', 'AP', 'AP maker', 'Band', 'Channel', 'Router ping ms', 'Loss %', 'Time']].concat(walk.map((w) => [w.room, w.signal, w.min, w.max, sigWord(w.signal), w.ssid, w.bssid, w.vendor, w.band, w.channel, w.pingMs, w.loss, w.at]));
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([rows.map((r) => r.map((v) => `"${String(v ?? '').replace(/"/g, '""')}"`).join(',')).join('\n')], { type: 'text/csv' })); a.download = `wifi-walk-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
+}
+
+// survey + channel plan
+let survey = null;
+const ourSsids = () => { const s = new Set(); const w = (netInfo && netInfo.wifi && netInfo.wifi.ssid) || (wLast && wLast.ssid); if (w) s.add(w); for (const x of ((plan && plan.config && plan.config.ssids) || [])) if (x.label) s.add(x.label); return s; };
+const span5 = (n) => { const w = n.width || 20; const c = n.channel; if (w <= 20) return [c]; const blk = w === 40 ? 2 : w === 80 ? 4 : 8; const base = c >= 149 ? 149 : 36; const idx = Math.floor((c - base) / 4 / blk) * blk; return Array.from({ length: blk }, (_, i) => base + (idx + i) * 4); };
+const CH5 = [36, 40, 44, 48, 52, 56, 60, 64, 100, 104, 108, 112, 116, 120, 124, 128, 132, 136, 140, 149, 153, 157, 161, 165];
+async function runSurvey() {
+  const b = $('#survGo'); b.disabled = true; b.textContent = 'Listening…';
+  try { survey = await api('wifiSurvey'); renderSurvey(); } catch (e) { toast(e.message, true); }
+  b.disabled = false; b.textContent = 'Survey again';
+}
+function drawChannels(canvas, list, band, mine) {
+  const g = canvas.getContext('2d'); const W = canvas.width; const H = canvas.height; g.clearRect(0, 0, W, H);
+  const top = 26; const bot = 30; const y = (d) => H - bot - Math.max(0, ((d ?? -95) + 95) / 65) * (H - top - bot);
+  let xs; let label;
+  if (band === '2.4 GHz') { xs = (c) => ((c + 1) / 16) * W; label = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]; }
+  else { const slot = W / (CH5.length + 1); xs = (c) => { let i = CH5.indexOf(c); if (i < 0) i = CH5.findIndex((x) => x > c); return (i + 1) * slot; }; label = CH5; }
+  g.font = '17px DM Mono, monospace'; g.textAlign = 'center'; g.fillStyle = '#8E8E93';
+  for (const c of label) { const x = xs(c); g.fillText(c, x, H - 8); g.strokeStyle = band === '2.4 GHz' && [1, 6, 11].includes(c) ? 'rgba(255,255,255,.16)' : 'rgba(255,255,255,.05)'; g.beginPath(); g.moveTo(x, top); g.lineTo(x, H - bot); g.stroke(); }
+  if (band !== '2.4 GHz') { g.fillStyle = 'rgba(227,167,47,.06)'; const a = xs(52) - W / (CH5.length + 1) / 2; const b2 = xs(144 > 140 ? 140 : 144) + W / (CH5.length + 1) / 2; g.fillRect(a, top, b2 - a, H - top - bot); g.fillStyle = '#e3a72f99'; g.fillText('DFS (radar: can move channel)', (a + b2) / 2, top - 6); }
+  const sorted = list.slice().sort((a, b) => (a.signal ?? -200) - (b.signal ?? -200));
+  for (const n of sorted) {
+    const ours = mine.has(n.ssid); const col = ours ? '#4bb9d3' : n.security === 'Open' ? '#e5784d' : '#98989D';
+    let x0; let x1;
+    if (band === '2.4 GHz') { const half = (n.width || 20) >= 40 ? 4 : 2; x0 = xs(n.channel - half); x1 = xs(n.channel + half); } else { const sp = span5(n); const slot = W / (CH5.length + 1); x0 = xs(sp[0]) - slot * 0.45; x1 = xs(sp[sp.length - 1]) + slot * 0.45; }
+    const yt = y(n.signal); const yb = H - bot; const cx = (x0 + x1) / 2;
+    g.beginPath(); g.moveTo(x0, yb); g.bezierCurveTo(x0 + (cx - x0) * 0.45, yt, x1 - (x1 - cx) * 0.45, yt, x1, yb);
+    g.fillStyle = col + (ours ? '33' : '14'); g.fill(); g.strokeStyle = col + (ours ? 'ff' : '99'); g.lineWidth = ours ? 3 : 1.5; g.stroke();
+    if (n.signal > -82 || ours) { g.fillStyle = ours ? '#4bb9d3' : '#c7c7cc'; g.font = `${ours ? 600 : 400} 16px DM Sans, sans-serif`; g.fillText((n.ssid || 'hidden').slice(0, 18), cx, yt - 4); }
+  }
+}
+function renderSurvey() {
+  if (!survey) return;
+  const mine = ourSsids(); const A = survey.analysis; const q = $('#survQ').value.trim().toLowerCase();
+  const nets = survey.networks.filter((n) => (!$('#survMine').checked || mine.has(n.ssid)) && (!q || [n.ssid, n.vendor, n.bssid, n.channel, n.band, n.security].join(' ').toLowerCase().includes(q)));
+  $('#survSum').textContent = `${A.counts.total} radios · ${A.counts.ssids} networks · ${A.counts.ghz24} on 2.4 GHz, ${A.counts.ghz5} on 5 GHz${A.counts.ghz6 ? `, ${A.counts.ghz6} on 6 GHz` : ''}${A.counts.hidden ? ` · ${A.counts.hidden} hidden` : ''} · ${new Date(survey.at).toLocaleTimeString('en-GB')}`;
+  $('#survFlags').innerHTML = A.flags.map((f) => `<div class="gflag ${f.level}"><b>${esc(f.title)}</b><br><span class="muted">${esc(f.text)}</span></div>`).join('');
+  const oursList = survey.networks.filter((n) => mine.has(n.ssid)); const best = oursList[0];
+  const ch24 = oursList.filter((n) => n.band === '2.4 GHz').map((n) => n.channel); const ch5 = oursList.filter((n) => n.band === '5 GHz').map((n) => n.channel);
+  const tile = (cls, lbl, big, ln) => `<div class="gcard ${cls}"><div class="lbl">${lbl}</div><div class="big">${big}</div><div class="ln">${ln}</div></div>`;
+  $('#survRec').innerHTML = [
+    tile('ok', '2.4 GHz · best channel', `ch ${A.recommend.ghz24 ?? '—'}`, `Load ${A.best24.map((b) => `ch ${b.channel}: <b>${b.load}</b>`).join(' · ')}${ch24.length ? `<br>Ours now: ch ${[...new Set(ch24)].join(', ')}` : ''}`),
+    tile('ok', '5 GHz · best channel', `ch ${A.recommend.ghz5 ?? '—'}`, `${A.recommend.ghz5 >= 149 ? 'Check the AP and older clients support 149–165. ' : ''}Quietest DFS: ch ${A.recommend.ghz5dfs ?? '—'}${ch5.length ? `<br>Ours now: ch ${[...new Set(ch5)].join(', ')}` : ''}`),
+    tile(best ? (best.signal >= -65 ? 'ok' : best.signal >= -72 ? 'warn' : 'bad') : '', 'Our Wi-Fi here', best ? `${best.signal} dBm` : '—', best ? `${esc(best.ssid)} · ${oursList.length} radio${oursList.length > 1 ? 's' : ''} heard · strongest ${esc(best.vendor || best.bssid || '')} ch ${best.channel}` : (mine.size ? `None of ${[...mine].map(esc).join(', ')} heard` : 'Join the site Wi-Fi or load the project to mark ours')),
+  ].join('');
+  drawChannels($('#ch24'), nets.filter((n) => n.band === '2.4 GHz'), '2.4 GHz', mine);
+  drawChannels($('#ch5'), nets.filter((n) => n.band === '5 GHz'), '5 GHz', mine);
+  const secCls = (s) => (/WEP|TKIP|old/.test(s) ? 'color:var(--bad)' : s === 'Open' ? 'color:var(--warn)' : '');
+  $('#survTable').innerHTML = `<thead><tr><th>Network</th><th>Signal</th><th>Band</th><th>Ch</th><th>Width</th><th>Security</th><th>AP maker</th><th>AP (BSSID)</th></tr></thead><tbody>` + nets.map((n) => `<tr${mine.has(n.ssid) ? ' style="background:rgba(75,185,211,.08)"' : ''}><td>${n.inUse ? '● ' : ''}${mine.has(n.ssid) ? '<b>' : ''}${esc(n.ssid || '(hidden)')}${mine.has(n.ssid) ? '</b>' : ''}</td><td style="white-space:nowrap"><span style="display:inline-block;width:60px;height:7px;border-radius:4px;background:var(--tabbar);vertical-align:middle;overflow:hidden"><span style="display:block;height:100%;width:${sigPct(n.signal)}%;background:${sigHex(n.signal)}"></span></span> <span class="mono">${n.signal ?? '—'}</span></td><td>${esc(n.band)}</td><td class="mono">${n.channel ?? ''}</td><td class="mono">${n.width ? n.width + ' MHz' : ''}</td><td style="${secCls(n.security)}">${esc(n.security)}</td><td>${esc(n.vendor)}</td><td class="mono">${esc(n.bssid)}</td></tr>`).join('') + '</tbody>';
+  $('#survNote').textContent = survey.note || '';
+}
+
 // ── IP schedule (paper) ───────────────────────────────────
 function renderSchedule() {
   if (!scanData) { $('#paper').innerHTML = '<p>No scan yet.</p>'; return; }
@@ -1035,8 +1209,8 @@ function renderSchedule() {
 // ── Wiring ────────────────────────────────────────────────
 document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
   document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
-  for (const t of ['devices', 'discovery', 'issues', 'check', 'tools', 'schedule']) $('#tab-' + t).hidden = b.dataset.tab !== t;
-  hideTip();
+  for (const t of ['devices', 'discovery', 'issues', 'check', 'wifi', 'tools', 'schedule']) $('#tab-' + t).hidden = b.dataset.tab !== t;
+  hideTip(); if (b.dataset.tab !== 'wifi' && wTimer) wStop();
   if (b.dataset.tab === 'check' && $('#projPick').options.length < 2) loadProjects();
   store.set('tab', b.dataset.tab);
 });
@@ -1056,6 +1230,13 @@ $('#portHost').addEventListener('keydown', (e) => { if (e.key === 'Enter') runPo
 $('#traceGo').onclick = (e) => runTool(e.target, '#traceOut', async () => { const r = await api('trace', { host: $('#traceHost').value.trim() }); return r.hops.map((h) => h.note || `${String(h.hop).padStart(2)}  ${(h.ip || '*').padEnd(16)} ${h.ms != null ? h.ms + ' ms' : ''}`).join('\n'); });
 $('#dnsGo').onclick = (e) => runTool(e.target, '#dnsOut', async () => { const r = await api('lookup', { name: $('#dnsName').value.trim() }); return (r.addresses.length ? r.addresses.join('\n') : 'No address found') + (r.names.length ? '\nName: ' + r.names.join(', ') : ''); });
 $('#wolGo').onclick = (e) => runTool(e.target, '#wolOut', async () => { const r = await api('wol', { mac: $('#wolMac').value.trim() }); return `Magic packet for ${r.mac} sent to ${r.sentTo.join(', ')}`; });
+$('#wGo').onclick = () => (wTimer ? wStop() : wStart());
+$('#walkGo').onclick = walkRecord; $('#walkRoom').addEventListener('keydown', (e) => { if (e.key === 'Enter') walkRecord(); });
+$('#walkPlan').onchange = (e) => walkPlanFile(e.target.files[0]); $('#walkCsv').onclick = walkCsv;
+$('#walkClear').onclick = () => { if (!walk.length && $('#wPlan').hidden) return; if (!confirm('Clear all readings and the floor plan?')) return; walk = []; store.set('walk', walk); store.set('walkPlan', null); $('#wPlan').hidden = true; renderWalk(); };
+$('#wHeat').onclick = (e) => { const r = e.target.getBoundingClientRect(); walkPos = { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height }; drawHeat(); $('#walkRoom').focus(); };
+$('#survGo').onclick = runSurvey; $('#survMine').onchange = renderSurvey; $('#survQ').oninput = renderSurvey;
+{ const pl = store.get('walkPlan', null); if (pl) loadPlanImage(pl); renderWalk(); drawMeter(); }
 $('#calcIn').oninput = () => { $('#calcOut').textContent = subnetCalc($('#calcIn').value || ($('#calcIn').placeholder.split(' ')[0])); };
 $('#calcOut').textContent = subnetCalc('192.168.20.0/22');
 $('#dhcpPool').value = store.get('dhcpPool', ''); $('#svcTint').checked = store.get('svcTint', true); document.body.classList.toggle('svc-tint', $('#svcTint').checked); $('#fillMacs').onclick = fillMacs; $('#markRev').onclick = () => markReviewed('');
