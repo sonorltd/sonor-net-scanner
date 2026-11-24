@@ -14,7 +14,7 @@ const tools = require('./lib/tools');
 const { netinfo, speedtest } = require('./lib/netinfo');
 const wifi = require('./lib/wifi');
 
-const VERSION = '1.6.0';
+const VERSION = '1.6.1';
 const PORT = Number(process.env.PORT || 8050);
 const DATA = process.env.NETSCAN_DATA || path.join(__dirname, 'scans');
 const PUBLIC = path.join(__dirname, 'public');
@@ -95,6 +95,14 @@ const actions = {
   trace: async ({ host } = {}) => [200, await tools.trace(String(host || '').trim())],
   lookup: async ({ name } = {}) => [200, await tools.lookup(String(name || '').trim())],
   wol: async ({ mac } = {}) => [200, await tools.wol(mac, ['255.255.255.255', ...net.localSubnets().map((l) => { const [b, bits] = l.cidr.split('/'); return net.intToIp((net.ipToInt(b) | (2 ** (32 - Number(bits)) - 1)) >>> 0); })])],
+
+  // RF tab: read a Sonor RF probe (ESP32 + CC1101, rf-probe/) on the site network. The agent fetches it so an https page can too.
+  rfProbe: async ({ ip, mhz } = {}) => {
+    if (!net.isIp(ip || '')) return [400, { error: 'enter the probe IPv4 address' }];
+    const url = `http://${ip}/${mhz ? 'freq?mhz=' + encodeURIComponent(mhz) : 'rssi'}`;
+    const r = await new Promise((resolve, reject) => { const q = require('http').get(url, { timeout: 2000 }, (res) => { let b = ''; res.on('data', (d) => { b += d; }); res.on('end', () => { try { resolve(JSON.parse(b)); } catch { reject(new Error('Not a Sonor RF probe at ' + ip)); } }); }); q.on('timeout', () => q.destroy(new Error('The probe did not answer'))); q.on('error', reject); });
+    return [200, r];
+  },
 
   // Re-probe one address (after a device is plugged in or renamed).
   probe: async ({ ip } = {}) => {
