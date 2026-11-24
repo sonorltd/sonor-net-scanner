@@ -16,7 +16,8 @@
 <script src="./data/sonor-app-auth.js"></script>
 <script src="./data/sonor-plan-image.js"></script>  <!-- the ONE Takeoffs plan loader (workspace master) -->
 <script src="./data/sonor-wireless.js"></script>
-<script src="./data/artnet-faults.js"></script>  <!-- Art-Net / sACN fault rules (shared with the agent) -->  <!-- the ONE wireless toolkit: Zigbee/Wi-Fi maths, hub guidance, grades, probes (workspace master) -->
+<script src="./data/artnet-faults.js"></script>
+<script src="./data/traffic-faults.js"></script>  <!-- Traffic tab fault rules (shared with the agent) -->  <!-- Art-Net / sACN fault rules (shared with the agent) -->  <!-- the ONE wireless toolkit: Zigbee/Wi-Fi maths, hub guidance, grades, probes (workspace master) -->
 <script src="./wifimap.js"></script>  <!-- Android app: signs in as the engineer (gateway v1.17.0) -->
 <style>
 :root, [data-theme] {
@@ -191,6 +192,7 @@ a { color: var(--accent-c); }
   <button data-tab="zigbee">Zigbee</button>
   <button data-tab="rf">RF</button>
   <button data-tab="artnet">Art-Net</button>
+  <button data-tab="traffic">Traffic</button>
   <button data-tab="tools">Tools</button>
   <button data-tab="schedule">IP schedule</button>
 </div>
@@ -271,7 +273,7 @@ a { color: var(--accent-c); }
   <section id="tab-zigbee" hidden>
     <div class="grid">
       <div class="panel wide"><span class="lbl">Zigbee meshes on this site</span>
-        <div class="muted small">Every Zigbee system runs its own mesh on one channel (11–26) inside the 2.4 GHz Wi-Fi band. Type the channel each one uses (Control4: Composer › Network › Zigbee; Heatmiser: the neoHub; Hue: the Hue app), then Listen: each mesh is checked against the Wi-Fi heard here and against the others.</div>
+        <div class="muted small">Every Zigbee system runs its own mesh on one channel (11–26) inside the 2.4 GHz Wi-Fi band. Type the channel each one uses (Control4: Composer › Network › Zigbee; Hue: the Hue app). Heatmiser neo is not Zigbee (its own 868 MHz + 2.4 GHz mesh, no channel), so it is not on this plan, then Listen: each mesh is checked against the Wi-Fi heard here and against the others.</div>
         <div class="row" id="zbMeshes" style="flex-wrap:wrap;gap:12px;margin-top:10px"></div>
         <div class="row" style="flex-wrap:wrap;margin-top:8px"><button id="zbGo" class="primary">Listen</button><label class="small" title="Re-listen every few seconds while this tab is open"><input type="checkbox" id="zbLive"> Live</label><span class="muted small" id="zbSum"></span></div>
         <div class="gflags" id="zbFlags" style="margin-top:10px"></div>
@@ -327,6 +329,22 @@ a { color: var(--accent-c); }
         <div class="lbl" style="margin-top:14px">Universes</div>
         <div style="overflow-x:auto"><table id="anUnis"></table></div>
         <div class="muted small" id="anSacnNote"></div>
+      </div>
+    </div>
+  </section>
+
+  <section id="tab-traffic" hidden>
+    <div class="grid">
+      <div class="panel wide"><span class="lbl">Live traffic · what the agent's network port sees</span>
+        <div class="muted small">A live Wireshark-style view from the Pi rig or laptop running the agent (not the tablet: Android can't capture). On a normal switch port it sees its own traffic plus every broadcast and multicast (discovery, DHCP, Art-Net, sACN, Dante clocks); plug it into a mirror (SPAN) port to see traffic between other devices. Headers only, nothing leaves the site. For full payloads, run Wireshark on a laptop on the same port, or record here and open the file in Wireshark.</div>
+        <div class="row" style="flex-wrap:wrap;margin-top:8px"><select id="trPreset"><option value="all">Everything</option></select><select id="trIface"><option value="">This agent's network port</option></select><button id="trGo" class="primary">Start</button><select id="trSecs" title="Record length"><option value="30">30 s</option><option value="60" selected>60 s</option><option value="120">2 min</option><option value="300">5 min</option></select><button id="trRec">Record to .pcap</button><span id="trFiles" class="small"></span></div>
+        <div class="muted small" id="trSum" style="margin-top:6px"></div>
+        <div class="gflags" id="trFlags" style="margin-top:10px"></div>
+        <div class="gcards" id="trTiles" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px;margin-top:10px"></div>
+        <canvas class="graph" id="trGraph" width="1200" height="200" style="height:160px;margin-top:10px"></canvas>
+        <div class="grid" style="margin-top:10px"><div style="overflow-x:auto"><div class="lbl">On the wire</div><table id="trWhat"></table></div><div style="overflow-x:auto"><div class="lbl">Top talkers</div><table id="trTalk"></table></div></div>
+        <div class="row" style="flex-wrap:wrap;margin-top:12px"><span class="lbl" style="margin:0">Packets</span><input id="trFilt" list="trFiltList" placeholder="Filter: tap a row above, or pick" style="flex:1;min-width:180px"><datalist id="trFiltList"></datalist><label class="small"><input type="checkbox" id="trPause"> Pause list</label></div>
+        <div style="overflow-x:auto;max-height:520px;overflow-y:auto"><table id="trPk"></table></div>
       </div>
     </div>
   </section>
@@ -403,7 +421,7 @@ a { color: var(--accent-c); }
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = '1.6.9';
+const APP_VERSION = '1.7.1';
 const HOSTED_URL = 'https://apps.sonor.co.uk/sonor-net-scanner/';
 if (window.SonorHeader) {
   SonorHeader.init({ appName: 'Network Scanner', repo: 'sonor-net-scanner' });
@@ -491,6 +509,18 @@ async function demoApi(action, data = {}) {
     case 'wifiSurvey': { await sleep(2200); const r = await fetch('data/demo-wifi.json'); const j = await r.json(); j.at = new Date().toISOString(); return j; }
     case 'neoHubSystem': { await sleep(300); return { channel: 15, field: 'ZIGBEE_CHANNEL', firmware: '2153', raw: {} }; }
     case 'hueZigbee': { await sleep(300); if (!data || !data.key) { demo.huePress = (demo.huePress || 0) + 1; if (demo.huePress < 2) return { needButton: true, error: 'link button not pressed' }; return { key: 'demo-key', channel: 11, bridgeid: 'ECB5FAFFFE012345' }; } return { key: data.key, channel: 11 }; }
+    case 'traffic': { const op = data && data.op; const D = demo.tr = demo.tr || { n: 0, t0: Date.now(), stats: null, files: [] };
+      if (op === 'files') return { files: D.files }; if (op === 'stop') return { running: false };
+      if (op === 'record') { await sleep(Math.min(3000, (data.seconds || 60) * 50)); const f = { file: `capture-${new Date().toISOString().replace(/[:.]/g, '-')}.pcap`, bytes: 184320 }; D.files.unshift(f); return { ...f, seconds: data.seconds }; }
+      if (op === 'start') { D.n = 0; D.t0 = Date.now(); D.stats = null; return { running: true, engine: 'tshark', iface: 'eth0', preset: data.preset, presets: { all: 'Everything', lighting: 'Art-Net + sACN', control: 'Control4 / Crestron / Savant', discovery: 'Discovery (mDNS, SSDP, SDDP)', dhcp: 'DHCP + ARP', audio: 'Dante / AES67 / PTP', sonos: 'Sonos / AirPlay', bcast: 'Broadcast + multicast only' }, interfaces: [{ ifname: 'eth0', cidr: '192.168.1.0/24' }, { ifname: 'wlan0', cidr: '10.77.0.0/24' }] }; }
+      await sleep(80); const T = [['192.168.1.95', 'ff:ff:ff:ff:ff:ff', '192.168.1.255', 'Art-Net', 572, 'Art-Net ArtDmx Universe 0', 40, 'b'], ['192.168.1.96', '01:00:5e:7f:00:04', '239.255.0.4', 'sACN', 638, 'sACN Universe 4, priority 100', 40, 'm'], ['192.168.1.10', '01:00:5e:7f:ff:fa', '239.255.255.250', 'Control4 SDDP', 410, 'NOTIFY ALIVE SDDP/1.0 "control4_ea3"', 0.5, 'm'],
+        ['192.168.1.50', '01:00:5e:00:00:fb', '224.0.0.251', 'mDNS', 320, 'Standard query response PTR _sonos._tcp.local', 3, 'm'], ['192.168.1.41', '01:00:5e:00:01:81', '224.0.1.129', 'PTP (Dante/AES67)', 86, 'Sync Message', 8, 'm'], ['192.168.1.1', 'ff:ff:ff:ff:ff:ff', '255.255.255.255', 'DHCP', 342, 'DHCP Offer - Transaction ID 0x3a7c', 0.1, 'b'], ['192.168.1.254', 'ff:ff:ff:ff:ff:ff', '255.255.255.255', 'DHCP', 342, 'DHCP Offer - Transaction ID 0x3a7c', 0.1, 'b'],
+        ['192.168.1.33', 'ff:ff:ff:ff:ff:ff', '192.168.1.1', 'ARP', 60, 'Who has 192.168.1.1? Tell 192.168.1.33', 1, 'b'], ['192.168.1.115', '02:00:00:00:00:01', '192.168.1.10', 'Control4', 120, '5020 → 49233 [PSH, ACK] Len=54', 2, 'u'], ['192.168.1.50', '02:00:00:00:00:02', '192.168.1.115', 'Sonos', 900, 'HTTP/1.1 200 OK (text/xml)', 1, 'u']];
+      const now = Date.now(); const secs = Math.max(1, Math.round((now - D.t0) / 1000)); const S = D.stats = D.stats || { pkts: 0, bytes: 0, bcast: 0, mcast: 0, ucastMine: 0, ucastOthers: 0, byWhat: {}, talk: {}, perSec: [], dhcpServers: {}, arp: { '192.168.1.60': { 'aa:bb:cc:00:00:60': now, 'aa:bb:cc:00:00:61': now } }, igmpQuery: 0, igmpReport: 6, stp: 0, retrans: 3, tcp: 210 };
+      const pk = []; for (const [src, dmac, dst, what, len, info, rate, kind] of T) { const k = Math.max(rate >= 1 ? Math.round(rate * (0.8 + Math.random() * 0.4)) : (Math.random() < rate ? 1 : 0), 0); for (let i = 0; i < k; i++) { const p = { n: ++D.n, t: now - Math.random() * 900, smac: '', dmac, src, dst, what, len, info }; if (pk.length < 40 || what !== 'Art-Net') pk.push(p); S.pkts++; S.bytes += len; S[kind === 'b' ? 'bcast' : kind === 'm' ? 'mcast' : 'ucastMine']++; const w = S.byWhat[what] = S.byWhat[what] || { pkts: 0, bytes: 0 }; w.pkts++; w.bytes += len; const t = S.talk[src] = S.talk[src] || { pkts: 0, bytes: 0, what: {} }; t.pkts++; t.bytes += len; t.what[what] = 1; if (what === 'DHCP') S.dhcpServers[src] = { offers: 1 }; } }
+      const sec = Math.floor(now / 1000); S.perSec.push({ s: sec, all: pk.length * 2 + 60 + Math.round(Math.random() * 20), bcast: 44 + Math.round(Math.random() * 6), mcast: 52 + Math.round(Math.random() * 8) }); S.perSec = S.perSec.slice(-60);
+      const stats = { ...S, secs, talkers: Object.entries(S.talk).sort((a, b) => b[1].bytes - a[1].bytes).map(([addr, v]) => ({ addr, ...v, what: Object.keys(v.what) })) };
+      return { running: true, engine: 'tshark', iface: 'eth0', last: D.n, packets: pk.sort((a, b) => a.t - b.t), stats, faults: TrafficFaults.faults({ ...S, secs }) }; }
     case 'artnet': { const op = data && data.op; if (op === 'locate') { await sleep(150); demo.anLoc = data.on ? data.ip : null; return { ok: true }; }
       if (op === 'sacn') { await sleep(4000); return { sources: [{ cid: 'a1b2', source: 'ETC Nomad (Cinema)', ip: '192.168.1.96', universes: [3, 4], priority: 100, data: { 3: { hz: 40, seqErr: 0, priority: 100, pap: false } } }, { cid: 'c3d4', source: 'QLC+ on laptop', ip: '192.168.1.97', universes: [4], priority: 100, data: {} }] }; }
       await sleep(700); const P = (n, u, o = {}) => ({ n, protocol: 'DMX512', output: true, input: false, outUniverse: u, inUniverse: null, outData: true, inData: false, outMerging: false, outSacn: false, ...o });
@@ -1328,7 +1358,7 @@ const zbProjectId = () => (typeof $ === 'function' && $('#projPick') && $('#proj
 function zbSetFromLan(sys, ch, how) { if (!ch) return false; zbLan[sys] = ch; store.set('zbLan', zbLan); if (zbMesh[sys] && String(zbMesh[sys]) !== String(ch)) { toast(`${ZB_SYS.find((x) => x.k === sys).name}: the hub says channel ${ch}, the page had ${zbMesh[sys]} · updated`); } zbMesh[sys] = String(ch); store.set('zbMesh', zbMesh); renderZbMeshes(); renderZbMeterCh(); return true; }
 async function zbReadHubs() {   // zbm.auto.flow step 2: channels over the LAN, no typing
   const out = [];
-  for (const d of zbDevs().filter((x) => /heatmiser/i.test(x.make))) { try { const r = await api('neoHubSystem', { ip: d.ip }); if (r.channel && zbSetFromLan('neo', r.channel)) out.push(`Heatmiser ch ${r.channel}`); else d._neoNote = 'The neoHub answered but gave no channel.'; } catch (e) { d._neoNote = e.message; } }
+  // Heatmiser neo is its own mesh, not Zigbee (neo.not_zigbee): no channel to read or plan here (v1.7.1)
   for (const d of zbDevs().filter((x) => /hue bridge/i.test(x.kind))) { const k = hueKeys[d.ip]; if (!k) { d._hueNote = 'Press the bridge button, then Read Hue channel.'; continue; } try { const r = await api('hueZigbee', { ip: d.ip, key: k }); if (r.channel && zbSetFromLan('hue', r.channel)) out.push(`Hue ch ${r.channel}`); else if (r.needButton) d._hueNote = 'The saved key no longer works: press the bridge button, then Read Hue channel.'; } catch (e) { d._hueNote = e.message; } }
   if (out.length) toast('Read from the hubs: ' + out.join(' · '));
   if (survey) renderSurvey(); else renderZigbee();
@@ -1519,9 +1549,9 @@ function renderZigbee() {
   $('#zbTable').innerHTML = `<thead><tr><th>Ch</th><th>MHz</th><th>Wi-Fi on it</th><th>Strongest Wi-Fi</th><th>Noise (probe, peak / background)</th><th>Used by</th></tr></thead><tbody>${zl.map((z) => { const en = zbEnergy && zbEnergy.ch && zbEnergy.ch.find((e) => e.ch === z.ch); return `<tr${taken.has(z.ch) ? ' style="background:rgba(75,185,211,.08)"' : ''}><td class="mono">${[15, 20, 25].includes(z.ch) ? '<b>' + z.ch + '</b>' : z.ch}</td><td class="mono">${z.freq}</td><td><span class="pill" style="background:${zbHex(z.dbm)}33;color:${zbHex(z.dbm)}">${!survey ? '—' : z.dbm == null ? 'clear' : z.dbm + ' dBm'}</span></td><td class="small">${z.who[0] ? `${esc(z.who[0].ssid || 'hidden')} · ch ${z.who[0].channel} · ${z.who[0].signal} dBm` : ''}</td><td>${en ? `<span class="pill ${energyVerdict(en.dbm)[1]}">${en.dbm}${en.median != null ? ' / ' + en.median : ''} dBm</span>` : ''}</td><td>${used.filter((m) => m.ch === z.ch).map((m) => esc(m.name)).join(', ')}${zbFoundList.some((f) => f.ch === z.ch) ? ' <span class="pill ok">heard</span>' : ''}</td></tr>`; }).join('')}</tbody>`;
   $('#zbNote').textContent = 'Zigbee channel k sits at 2405 + 5 × (k − 11) MHz and is 2 MHz wide; a Wi-Fi network covers it when its 20 or 40 MHz span overlaps. This shows the Wi-Fi only: the tablet cannot hear Zigbee itself. Bold channels are the Control4 choices.';
   const devs = (scanData && scanData.devices) || []; const hubs = []; for (const d of devs) { const gd = RF_GUIDE.find((x) => x.test(d)); if (gd && gd.zb) hubs.push([d, gd]); }
-  $('#zbHubs').innerHTML = (hubs.length ? hubs.map(([d, gd]) => guideCard(d, gd).replace(/<\/div><\/div>$/, `${/hue bridge/i.test(d.kind) ? `<div class="row" style="margin-top:8px"><button class="btn-sm" data-huepair="${esc(d.ip)}">${hueKeys[d.ip] ? 'Read Hue channel' : 'Pair + read Hue channel'}</button><span class="muted small">${esc(d._hueNote || (zbLan.hue ? 'Channel ' + zbLan.hue + ' read from the bridge' : ''))}</span></div>` : ''}${/heatmiser/i.test(d.make) ? `<div class="muted small" style="margin-top:6px">${esc(d._neoNote || (zbLan.neo ? 'Channel ' + zbLan.neo + ' read from the neoHub' : ''))}</div>` : ''}</div></div>`)).join('') : `<p class="muted small">${devs.length ? 'No Control4, Hue or Heatmiser hubs in this scan.' : 'No scan yet: run one on the Devices tab.'}</p>`)
+  $('#zbHubs').innerHTML = (hubs.length ? hubs.map(([d, gd]) => guideCard(d, gd).replace(/<\/div><\/div>$/, `${/hue bridge/i.test(d.kind) ? `<div class="row" style="margin-top:8px"><button class="btn-sm" data-huepair="${esc(d.ip)}">${hueKeys[d.ip] ? 'Read Hue channel' : 'Pair + read Hue channel'}</button><span class="muted small">${esc(d._hueNote || (zbLan.hue ? 'Channel ' + zbLan.hue + ' read from the bridge' : ''))}</span></div>` : ''}</div></div>`)).join('') : `<p class="muted small">${devs.length ? 'No Control4 or Hue hubs in this scan.' : 'No scan yet: run one on the Devices tab.'}</p>`)
     + (threadNets().length ? `<p class="small"><b>Thread networks on the LAN:</b> ${threadNets().map((t) => `${esc(t.nn || '?')}${t.vn ? ' (' + esc(t.vn) + (t.mn ? ' ' + esc(t.mn) : '') + ')' : ''}`).join(', ')}</p>` : '')
-    + '<p class="muted small">Zigbee devices are not on the LAN, so a scan cannot list them: Control4 keypads, dimmers and remotes, Heatmiser neoStats and neoAirs, Hue bulbs. They will come from the Takeoffs wireless plan once that module is built.</p>';
+    + '<p class="muted small">Zigbee devices are not on the LAN, so a scan cannot list them: Control4 keypads, dimmers and remotes, Hue bulbs. They come from the Takeoffs wireless plan, each marked Repeater or End device only (from the plan, else the Library, else the built-in guess).</p>';
   $('#zbHubs').querySelectorAll('[data-huepair]').forEach((b) => b.onclick = () => zbHuePair(b.dataset.huepair));
 }
 const guideCard = (d, g) => `<div class="gcard"><div class="lbl">${esc(d.make || '')} · ${esc(d.kind || '')}</div><div class="big" style="font-size:18px">${esc(nameOf(d) || d.model || d.ip)}</div><div class="ln"><span class="mono">${esc(d.ip)}</span> ${ipLink(d)}${d.mac ? ' · ' + esc(d.mac) : ''}${d.firmware ? ' · fw ' + esc(d.firmware) : ''}<br><b>${esc(g.band)}</b><ul class="rfl">${g.tips.map((t) => `<li>${esc(t)}</li>`).join('')}</ul></div></div>`;
@@ -1679,6 +1709,63 @@ function renderArtnet() {
 function anAuto() { renderArtnet(); anPoll(false); if (!an.sacnAt || Date.now() - new Date(an.sacnAt) > 10 * 60000) setTimeout(anSacn, 400); anLive(store.get('anLive', true)); }
 $('#anGo').onclick = () => anPoll(false); $('#anSacn').onclick = anSacn; $('#anLive').onchange = (e) => anLive(e.target.checked);
 
+// ── Traffic tab (v1.7.0): live capture on the site agent (Pi rig or laptop), Wireshark-style. Local only, headers only. ──
+let tr = { on: false, last: 0, pk: [], stats: null, faults: [], st: null, paused: false, filt: '' }; let trTimer = null, trBusy = false;
+const TR_COL = { 'Art-Net': '#e3a72f', sACN: '#e5784d', 'Control4 SDDP': '#4bb9d3', Control4: '#4bb9d3', mDNS: '#8fa3ff', SSDP: '#8fa3ff', DHCP: '#2fbf71', ARP: '#2fbf71', 'PTP (Dante/AES67)': '#c86bd6', Dante: '#c86bd6', IGMP: '#c86bd6', STP: '#ec6061', Sonos: '#f5d05c', AirPlay: '#f5d05c', Crestron: '#4bb9d3' };
+const trName = (a) => { const d = ((scanData && scanData.devices) || []).find((x) => x.ip === a || (x.mac || '').toLowerCase() === String(a).toLowerCase()); return d ? (nameOf(d) || d.kind || d.make || '') : ''; };
+const trAddr = (a) => { const n = trName(a); return `<span class="mono">${esc(a || '—')}</span>${n ? `<div class="muted small">${esc(n)}</div>` : ''}`; };
+async function trStart() {
+  try { const r = await api('traffic', { op: 'start', preset: $('#trPreset').value || 'all', iface: $('#trIface').value || '' }); if (r.error) throw new Error(r.error);
+    tr = { ...tr, on: true, last: 0, pk: [], st: r }; if (r.presets && $('#trPreset').options.length < 2) { const was = store.get('trPreset', 'all'); $('#trPreset').innerHTML = Object.entries(r.presets).map(([k, l]) => `<option value="${k}">${esc(l)}</option>`).join(''); $('#trPreset').value = was; }
+    if (r.interfaces && $('#trIface').options.length < 2) $('#trIface').innerHTML = r.interfaces.map((i) => `<option value="${esc(i.ifname)}"${i.ifname === r.iface ? ' selected' : ''}>${esc(i.ifname)} · ${esc(i.cidr)}</option>`).join('') + '<option value="any">All interfaces</option>';
+    $('#trGo').textContent = 'Stop'; clearInterval(trTimer); trTimer = setInterval(trRead, 1000); trRead();
+  } catch (e) { $('#trSum').innerHTML = `<span style="color:var(--warn)">${esc(e.message)}</span>`; toast(e.message, true); }
+}
+async function trStop() { clearInterval(trTimer); trTimer = null; if (tr.on) { tr.on = false; try { await api('traffic', { op: 'stop' }); } catch {} } $('#trGo').textContent = 'Start'; }
+async function trRead() {
+  if (trBusy || document.hidden) return; trBusy = true;
+  try { const r = await api('traffic', { op: 'read', since: tr.last }); tr.last = r.last || tr.last; if (!tr.paused) { tr.pk = [...(r.packets || []).reverse(), ...tr.pk].slice(0, 400); } tr.stats = r.stats; tr.faults = r.faults || []; tr.st = r;
+    if (r.err) $('#trSum').innerHTML = `<span style="color:var(--warn)">${esc(r.err)}</span>`; renderTraffic(); if (!r.running && tr.on) { tr.on = false; clearInterval(trTimer); trTimer = null; $('#trGo').textContent = 'Start'; }
+  } catch (e) { $('#trSum').textContent = e.message; }
+  trBusy = false;
+}
+function renderTraffic() {
+  const s = tr.stats; const st = tr.st || {};
+  if (!s) { $('#trSum').textContent = 'Press Start: the agent listens on its network port.'; return; }
+  const now = (s.perSec || []).slice(-2)[0] || { all: 0, bcast: 0, mcast: 0 }; const mode = s.ucastOthers > 50 ? 'mirror port (sees other devices)' : 'normal port (own traffic + broadcast + multicast)';
+  if (!st.err) $('#trSum').textContent = `${st.engine || ''} on ${st.iface || ''} · ${mode} · ${s.pkts.toLocaleString()} packets in ${s.secs} s`;
+  $('#trFlags').innerHTML = tr.faults.map((f) => `<div class="gflag ${f.level}">${esc(f.text)}</div>`).join('');
+  const dh = Object.entries(s.dhcpServers || {}); const tile = (l, b, n, c) => `<div class="gcard"${c ? ` style="--c:${c}"` : ''}><div class="lbl">${l}</div><div class="big">${b}</div><div class="ln">${n}</div></div>`;
+  $('#trTiles').innerHTML = [tile('Now', `${now.all}/s`, `${now.bcast} broadcast · ${now.mcast} multicast`), tile('Total', s.pkts.toLocaleString(), `${(s.bytes / 1e6).toFixed(1)} MB · ${s.secs} s`),
+    tile('DHCP servers', dh.length || '—', dh.map(([ip]) => esc(ip)).join(', ') || 'none heard yet', dh.length > 1 ? 'var(--bad)' : ''), tile('IGMP', s.igmpQuery ? 'querier ✓' : '—', `${s.igmpQuery} queries · ${s.igmpReport} reports`), tile('TCP retransmits', s.tcp ? `${Math.round((s.retrans / s.tcp) * 1000) / 10}%` : '—', `${s.retrans} of ${s.tcp}`)].join('');
+  drawTraffic();
+  const tot = s.pkts || 1; const what = Object.entries(s.byWhat || {}).sort((a, b) => b[1].pkts - a[1].pkts).slice(0, 14);
+  $('#trWhat').innerHTML = `<thead><tr><th>What</th><th>Packets</th><th>Share</th><th>Data</th></tr></thead><tbody>${what.map(([w, v]) => `<tr data-trf="${esc(w)}" style="cursor:pointer"><td><span class="sw" style="--c:${TR_COL[w] || '#8E8E93'}"></span>${esc(w)}</td><td class="mono">${v.pkts}</td><td class="mono">${Math.round((v.pkts / tot) * 100)}%</td><td class="mono">${(v.bytes / 1024).toFixed(0)} kB</td></tr>`).join('')}</tbody>`;
+  $('#trTalk').innerHTML = `<thead><tr><th>Who</th><th>Packets</th><th>Data</th><th>Mostly</th></tr></thead><tbody>${(s.talkers || []).slice(0, 12).map((t) => `<tr data-trf="${esc(t.addr)}" style="cursor:pointer"><td>${trAddr(t.addr)}</td><td class="mono">${t.pkts}</td><td class="mono">${(t.bytes / 1024).toFixed(0)} kB</td><td class="small">${t.what.map(esc).join(', ')}</td></tr>`).join('')}</tbody>`;
+  document.querySelectorAll('#tab-traffic [data-trf]').forEach((r) => r.onclick = () => { $('#trFilt').value = r.dataset.trf; tr.filt = r.dataset.trf; renderTrPk(); });
+  $('#trFiltList').innerHTML = [...what.map(([w]) => w), ...(s.talkers || []).map((t) => t.addr)].map((v) => `<option value="${esc(v)}">${esc(trName(v))}</option>`).join('');
+  renderTrPk();
+}
+function renderTrPk() {
+  const f = tr.filt.toLowerCase(); const list = (f ? tr.pk.filter((p) => [p.what, p.src, p.dst, p.smac, p.info].some((x) => String(x || '').toLowerCase().includes(f))) : tr.pk).slice(0, 200);
+  $('#trPk').innerHTML = list.length ? `<thead><tr><th>Time</th><th>From</th><th>To</th><th>What</th><th>Len</th><th>Info</th></tr></thead><tbody>${list.map((p) => `<tr><td class="mono small">${new Date(p.t).toLocaleTimeString()}</td><td>${trAddr(p.src || p.smac)}</td><td>${trAddr(p.dst || p.dmac)}</td><td><span class="sw" style="--c:${TR_COL[p.what] || '#8E8E93'}"></span>${esc(p.what)}</td><td class="mono">${p.len}</td><td class="small" style="max-width:420px;overflow-wrap:anywhere">${esc(p.info)}</td></tr>`).join('')}</tbody>` : `<tbody><tr><td class="muted small">${tr.on ? 'Waiting for packets…' : 'No packets yet.'}</td></tr></tbody>`;
+}
+function drawTraffic() {
+  const cv = $('#trGraph'); const g = cv.getContext('2d'); const W = cv.width, H = cv.height; g.clearRect(0, 0, W, H); const ps = ((tr.stats && tr.stats.perSec) || []).slice(-60);
+  const max = Math.max(10, ...ps.map((p) => p.all)) * 1.15; const x = (i) => (i / 59) * W; const y = (v) => H - 8 - (v / max) * (H - 30); const off = 60 - ps.length;
+  g.strokeStyle = 'rgba(255,255,255,.07)'; for (let i = 1; i < 4; i++) { g.beginPath(); g.moveTo(0, (H * i) / 4); g.lineTo(W, (H * i) / 4); g.stroke(); }
+  for (const [k, col] of [['all', '#4bb9d3'], ['mcast', '#c86bd6'], ['bcast', '#e3a72f']]) { g.strokeStyle = col; g.lineWidth = 2; g.beginPath(); ps.forEach((p, i) => { const X = x(i + off), Y = y(p[k]); i ? g.lineTo(X, Y) : g.moveTo(X, Y); }); g.stroke(); }
+  g.lineWidth = 1; g.font = '15px DM Mono, monospace'; g.fillStyle = '#8E8E93'; g.textAlign = 'right'; g.fillText(Math.round(max) + ' pkt/s', W - 6, 18); g.textAlign = 'left';
+  g.fillStyle = '#4bb9d3'; g.fillText('all', 8, 18); g.fillStyle = '#c86bd6'; g.fillText('multicast', 50, 18); g.fillStyle = '#e3a72f'; g.fillText('broadcast', 160, 18);
+}
+async function trFiles() { try { const r = await api('traffic', { op: 'files' }); $('#trFiles').innerHTML = (r.files || []).map((f) => `<a class="btn-sm" href="${mode === 'demo' ? '#' : 'pcap/' + encodeURIComponent(f.file)}" download>${esc(f.file.replace(/^capture-|\.pcap$/g, '').slice(0, 16).replace('T', ' '))} · ${(f.bytes / 1024).toFixed(0)} kB</a>`).join(' '); } catch {} }
+$('#trGo').onclick = () => (tr.on ? trStop() : trStart());
+$('#trPreset').onchange = () => { store.set('trPreset', $('#trPreset').value); if (tr.on) trStart(); }; $('#trIface').onchange = () => { if (tr.on) trStart(); };
+$('#trFilt').oninput = () => { tr.filt = $('#trFilt').value.trim(); renderTrPk(); }; $('#trPause').onchange = (e) => { tr.paused = e.target.checked; };
+$('#trRec').onclick = async () => { const b = $('#trRec'); const secs = Number($('#trSecs').value); b.disabled = true; let n = secs; b.textContent = `Recording… ${n}`; const t = setInterval(() => { b.textContent = `Recording… ${--n}`; }, 1000);
+  try { const r = await api('traffic', { op: 'record', seconds: secs, iface: $('#trIface').value || '' }); if (r.error) throw new Error(r.error); toast(`Saved ${r.file} (${(r.bytes / 1024).toFixed(0)} kB): open it in Wireshark`); trFiles(); } catch (e) { toast(e.message, true); }
+  clearInterval(t); b.disabled = false; b.textContent = 'Record to .pcap'; };
+
 // ── IP schedule (paper) ───────────────────────────────────
 function renderSchedule() {
   if (!scanData) { $('#paper').innerHTML = '<p>No scan yet.</p>'; return; }
@@ -1698,12 +1785,13 @@ function renderSchedule() {
 // ── Wiring ────────────────────────────────────────────────
 document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
   document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
-  for (const t of ['devices', 'discovery', 'issues', 'check', 'wifi', 'zigbee', 'rf', 'artnet', 'tools', 'schedule']) $('#tab-' + t).hidden = b.dataset.tab !== t;
+  for (const t of ['devices', 'discovery', 'issues', 'check', 'wifi', 'zigbee', 'rf', 'artnet', 'traffic', 'tools', 'schedule']) $('#tab-' + t).hidden = b.dataset.tab !== t;
   hideTip(); if (b.dataset.tab !== 'wifi' && wTimer) wStop();
   if (b.dataset.tab === 'check' && $('#projPick').options.length < 2) loadProjects();
   if (b.dataset.tab === 'rf') { renderRf(); loadNodes(false); } else rfStop();
   nodesWatch(['rf', 'zigbee'].includes(b.dataset.tab));
   if (b.dataset.tab === 'artnet') anAuto(); else anStop();
+  if (b.dataset.tab === 'traffic') { renderTraffic(); trFiles(); if (!tr.on) trStart(); } else if (tr.on) trStop();
   if (b.dataset.tab === 'zigbee') { renderZigbee(); zbAuto(); } else zbStop();
   store.set('tab', b.dataset.tab);
 });

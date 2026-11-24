@@ -1,4 +1,4 @@
-# Sonor Network Scanner · v1.6.9
+# Sonor Network Scanner · v1.7.1
 
 A commissioning scanner for AV / Control4 sites. It finds every device on the network and says what it is in AV terms (make, model, firmware, serial where the device publishes it), checks the site against the project's plan in the Network Map app, and prints an as-found IP schedule.
 
@@ -71,6 +71,18 @@ Not done yet: hosting the page at apps.sonor.co.uk (needs the `sonorltd/sonor-ne
 - **Check against project** shows the project's uploaded scans (one master table, filtered per project) and the office's Unassigned
   list (attach to a project). **Review** opens an uploaded scan here; Fill MACs / Mark reviewed calls `net_scan_apply`, which writes
   the revision note into Network Map's history (`sonor_revisions`, app `network-map`: who scanned, who reviewed, what changed).
+
+## v1.7.1 (2026-11-24): radio roles from the Library, Heatmiser neo is not Zigbee
+- sonor-wireless.js 1.3.0: `radioOf(placement, libRow)` gives each device its radio system and role (Repeater / End device only), from the Takeoffs placement (`sonorSymbol.radio`), then the Library (`sonor_blocks.metadata.radio`, `{none:true}` = not a radio), then the same built-in table Takeoffs uses. Contract: APP - Takeoffs/docs/WIRELESS-CONTRACT.md.
+- Heatmiser neo is its own 868 MHz + 2.4 GHz mesh (about 40 m open space, 32 devices per neoHub), not Zigbee: removed from the Zigbee channel plan and the neoHub channel read; hub tips rewritten (APP - Takeoffs/docs/research/heatmiser-neo-radio.md).
+
+## v1.7.0 (2026-11-24): Traffic tab (live capture on the Pi rig or laptop)
+- `lib/capture.js`: tshark (`-T fields`, snaplen 128) or tcpdump (`-e -tt`) on the agent's port, started when the tab opens and stopped when it closes; auto-stop after 30 min. A 4,000-packet ring is held in memory, nothing is uploaded, and the tablet can't capture (Android).
+- AV labels: Art-Net, sACN (only when tshark says E1.31; Shure also uses 5568), Control4 SDDP and control, mDNS, SSDP, DHCP, PTP/Dante, NDI, AirPlay, Sonos, Crestron, Savant, UniFi, SNMP and more. One-tap presets set the capture filter.
+- Live view: packets per second (all, broadcast, multicast), what's on the wire, top talkers named from the scan, and a packet list with a filter (tap a row or pick).
+- **Record to .pcap** (dumpcap, headers only) saves to `scans/pcap/` and downloads from `/pcap/<file>` to open in Wireshark. Full payloads = Wireshark on a laptop on the same (mirror) port.
+- Faults (`public/data/traffic-faults.js`, ids and thresholds from the research file `traffic-rules.json`): sustained broadcast 100/1000 pps, multicast flooding, rogue DHCP, duplicate IP (ARP), no IGMP querier after 260 s or 2+ queriers, STP topology changes, TCP retransmits 1%/5%, and normal-vs-mirror port.
+- `pi/install.sh` installs tshark and tcpdump, adds the service user to the wireshark group and sets capabilities on dumpcap. On a Mac, install Wireshark (ChmodBPF). On Windows, install Wireshark with Npcap.
 
 ## v1.6.9 (2026-11-24): Art-Net tab (discovery and info)
 - `lib/artnet.js`: ArtPoll to 2.255.255.255, 10.255.255.255 and each local broadcast (never 255.255.255.255), flags "reply on change", sent twice; ArtPollReply parsed by the research offsets (>= 207 bytes), grouped by MAC across BindIndex; ArtDmx heard while listening (source, universe, Hz, out-of-order count); sACN universe discovery on 239.255.250.214:5568 for 11 s, plus sniffing of the universes the nodes output (priority, Hz, per-channel priority, sequence errors); ArtAddress Locate / normal.

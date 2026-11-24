@@ -14,7 +14,7 @@ const tools = require('./lib/tools');
 const { netinfo, speedtest } = require('./lib/netinfo');
 const wifi = require('./lib/wifi');
 
-const VERSION = '1.6.9';
+const VERSION = '1.7.1';
 const PORT = Number(process.env.PORT || 8050);
 const DATA = process.env.NETSCAN_DATA || path.join(__dirname, 'scans');
 const PUBLIC = path.join(__dirname, 'public');
@@ -141,6 +141,17 @@ const actions = {
     return [200, { ...r, locals: locals.map((l) => l.cidr) }];
   },
 
+  // Traffic tab: live capture on this agent (lib/capture.js: tshark, else tcpdump). op start | stop | read (since) | record | files.
+  // Local only: packets stay in a ring here; a .pcap is written to scans/pcap only on Record and downloaded from /pcap/<file>.
+  traffic: async ({ op = 'read', since, preset, iface, seconds } = {}) => {
+    const C = require('./lib/capture'); const dir = path.join(DATA, 'pcap');
+    if (op === 'start') { const r = C.start({ preset, iface }); return [r.error ? 501 : 200, { ...r, presets: Object.fromEntries(Object.entries(C.PRESETS).map(([k, v]) => [k, v.label])), interfaces: net.localSubnets().map((l) => ({ ifname: l.ifname, cidr: l.cidr })) }]; }
+    if (op === 'stop') { C.stop(); return [200, C.status()]; }
+    if (op === 'record') { const r = await C.record({ seconds, dir, iface }); return [r.error ? 500 : 200, r]; }
+    if (op === 'files') { let f = []; try { f = fs.readdirSync(dir).filter((x) => x.endsWith('.pcap')).sort().reverse().slice(0, 20).map((x) => ({ file: x, bytes: fs.statSync(path.join(dir, x)).size })); } catch {} return [200, { files: f }]; }
+    return [200, C.read({ since: Number(since) || 0 })];
+  },
+
   // Zigbee channels read straight from the hubs, so nobody types them (research zbm.lan.*).
   // neoHub legacy API: TCP 4242, JSON + NUL, no token (off unless enabled in the Heatmiser app). The channel field name is
   // not documented, so any key containing "channel" in GET_SYSTEM's answer is used.
@@ -213,6 +224,8 @@ const server = http.createServer(async (req, res) => {
     } catch (e) { if (!res.headersSent) json(res, e.message && /^Enter /.test(e.message) ? 400 : 500, { error: e.message }); }
     return;
   }
+  const pc = url.pathname.match(/^\/pcap\/(capture-[\w-]+\.pcap)$/);
+  if (pc) { const f = path.join(DATA, 'pcap', pc[1]); return fs.readFile(f, (err, data) => { if (err) { res.writeHead(404); return res.end('not found'); } res.writeHead(200, { 'Content-Type': 'application/vnd.tcpdump.pcap', 'Content-Disposition': `attachment; filename="${pc[1]}"` }); res.end(data); }); }
   const file = path.normalize(path.join(PUBLIC, url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname)));
   if (!file.startsWith(PUBLIC)) { res.writeHead(403); return res.end(); }
   fs.readFile(file, (err, data) => {

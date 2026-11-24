@@ -100,6 +100,12 @@ window.__SONOR_BRAND__ = {
       takeoffs:    '../APP - Takeoffs/sonor-takeoffs.html',
       takeoffsSite: '../APP - Takeoffs/site.html',   // read-only site view (Takeoffs v5.263.0+)
       netmap:      '../APP - Network Map/sonor-network-map.html',
+      'net-scanner': '../APP - Network Scanner/public/index.html',
+      'sky-remote':  '../APP - Remotes/public/index.html',
+      'site-rig':    '../APP - Site Rig/index.html',
+      'ir-rf':       '../APP - IR RF Capture/public/index.html',   // on site: http://<agent>:8052
+      'android-apps': '../APP - Android Apps/README.md',
+      'artnet-tester': '../APP - Android Apps/artnet/web/index.html',   // Art-Net Tester (Android, uk.co.sonor.artnet); web page = demo only (a browser can't send UDP)
       rams:        '../APP - RAMS Generator/sonor-rams-generator.html',
       leads:       '../APP - Leads/dashboard/sonor-leads.html',
       accounts:    '../APP - Accounts/dashboard/sonor-accounts.html',
@@ -215,6 +221,12 @@ window.__SONOR_BRAND__ = {
       takeoffs:    'https://apps.sonor.co.uk/sonor-takeoffs/',
       takeoffsSite: 'https://apps.sonor.co.uk/sonor-takeoffs/site.html',   // read-only site view (Takeoffs v5.263.0+)
       netmap:      'https://apps.sonor.co.uk/sonor-network-map/',
+      'net-scanner': 'https://apps.sonor.co.uk/sonor-net-scanner/public/',
+      'sky-remote':  'https://apps.sonor.co.uk/sonor-remotes/public/',
+      'site-rig':    'https://apps.sonor.co.uk/sonor-site-rig/',
+      'ir-rf':       'https://apps.sonor.co.uk/sonor-ir-rf/public/',
+      'android-apps': 'https://github.com/sonorltd/sonor-android-apps',
+      'artnet-tester': 'https://github.com/sonorltd/sonor-android-apps/tree/main/artnet',   // not served: sonor-android-apps has no Pages site
       rams:        'https://apps.sonor.co.uk/sonor-rams/',
       leads:       'https://apps.sonor.co.uk/sonor-leads/',
       accounts:    'https://apps.sonor.co.uk/sonor-accounts/',

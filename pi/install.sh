@@ -15,8 +15,13 @@ if need_node; then echo "Installing Node.js…"; apt-get update -qq && apt-get i
 if need_node; then echo "Node.js 18 or newer is needed and could not be installed. Install it from https://nodejs.org and run this again."; exit 1; fi
 command -v ping >/dev/null 2>&1 || apt-get install -y -qq iputils-ping
 command -v ip >/dev/null 2>&1 || apt-get install -y -qq iproute2
+# Traffic tab (1.7.0): tshark for the live capture; the service user may capture through dumpcap (wireshark group), nothing else runs as root
+if ! command -v tshark >/dev/null 2>&1; then echo "wireshark-common wireshark-common/install-setuid boolean true" | debconf-set-selections; DEBIAN_FRONTEND=noninteractive apt-get install -y -qq tshark || echo "tshark could not be installed: the Traffic tab will fall back to tcpdump"; fi
+command -v tcpdump >/dev/null 2>&1 || apt-get install -y -qq tcpdump || true
 
 id -u "$USER_NAME" >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin "$USER_NAME"
+getent group wireshark >/dev/null 2>&1 && usermod -aG wireshark "$USER_NAME"
+DC=$(command -v dumpcap || true); [ -n "$DC" ] && setcap cap_net_raw,cap_net_admin=eip "$DC" 2>/dev/null || true
 mkdir -p "$DEST/scans"
 # saved scans and notes in $DEST/scans are kept on reinstall
 cp -r "$SRC/lib" "$SRC/public" "$SRC/data" "$SRC/server.js" "$SRC/package.json" "$DEST/"

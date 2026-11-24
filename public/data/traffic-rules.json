@@ -1,0 +1,555 @@
+{
+ "version": "2026-11-24",
+ "about": "Rules for the Network Scanner 'Traffic' tab (live capture on the Pi Site Rig agent, macOS and Windows laptop agents). Same {id,text,sources,strength} style as wifi-rf-rules.json. Stable ids; add, never renumber. Researched with web search and direct reading (no Apify connector).",
+ "strength_key": {
+  "strong": "Spec, vendor or tool doc read directly.",
+  "medium": "Credible secondary source.",
+  "heuristic": "Sonor rule from the sources; tune on site.",
+  "unverified": "Hint only."
+ },
+ "capture": [
+  {
+   "id": "cap.method",
+   "text": "Live path: run dumpcap (or tcpdump where Wireshark isn't installed) with a BPF capture filter, snaplen and bigger buffer, writing classic pcap to stdout: dumpcap -i <if> -f '<bpf>' -s 128 -B 8 -P -w -  (tcpdump -i <if> -s 128 -U -w - '<bpf>'). Parse the pcap stream in plain JS (24-byte file header, 16-byte record header, then Ethernet/IP/UDP/TCP headers). No native Node modules, same parser on Pi, macOS and Windows.",
+   "sources": [
+    "https://www.wireshark.org/docs/man-pages/dumpcap.html",
+    "https://www.ietf.org/archive/id/draft-ietf-opsawg-pcap-09.html",
+    "https://wiki.wireshark.org/Performance"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "cap.tshark",
+   "text": "Use tshark only for on-demand deep dissection of a short filtered slice: tshark -l -T ek (one JSON object per line), with -f capture filters not -Y display filters, and -b ring buffer or -M to cap memory (tshark keeps per-packet state and grows forever otherwise). -2 two-pass doesn't work on live captures.",
+   "sources": [
+    "https://www.wireshark.org/docs/man-pages/tshark.html",
+    "https://blog.wireshark.org/2014/07/to-infinity-and-beyond-capturing-forever-with-tshark/"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "cap.ring",
+   "text": "Keep a dumpcap ring buffer alongside the live view for 'Download pcap': -b filesize:10240 -b files:10 (about 100 MB). Dissection is single-threaded, so capture with dumpcap and analyse later; extra cores don't help tshark.",
+   "sources": [
+    "https://www.wireshark.org/docs/man-pages/dumpcap.html",
+    "https://wiki.wireshark.org/Performance"
+   ],
+   "strength": "strong",
+   "rule": {
+    "ring_file_kb": 10240,
+    "ring_files": 10
+   }
+  },
+  {
+   "id": "cap.no_afpacket",
+   "text": "Node core has no raw packet socket (dgram is UDP only); AF_PACKET needs a native addon (cap/pcap npm). Not worth it: spawning dumpcap/tcpdump is simpler and portable.",
+   "sources": [],
+   "strength": "medium"
+  },
+  {
+   "id": "cap.perf.pi",
+   "text": "Pi 4 and Pi 5 can bridge close to 1 Gbit (Pi 4 with TP-Link UE300 about 922 Mbit/s at ~50% CPU), but parsing every packet in Node at that rate won't keep up. Always capture with a BPF filter and snaplen, show dropped-packet counts from dumpcap, and warn when drops exceed 1%. No published Pi capture benchmarks exist; measure on the Site Rig.",
+   "sources": [
+    "https://forum.openwrt.org/t/rpi4-routing-performance-numbers/53996",
+    "https://fmad.io/blog/raspberry-pi-packet-capture"
+   ],
+   "strength": "medium",
+   "rule": {
+    "warn_drop_pct": 1
+   }
+  },
+  {
+   "id": "cap.perm.pi",
+   "text": "Pi / Debian: sudo dpkg-reconfigure wireshark-common -> Yes, then sudo usermod -aG wireshark <agent user> (log in again). Or sudo setcap cap_net_raw,cap_net_admin+eip /usr/bin/dumpcap. For tcpdump the same setcap. Run the agent's systemd unit with AmbientCapabilities=CAP_NET_RAW CAP_NET_ADMIN instead of root. Put this in pi/install.sh.",
+   "sources": [
+    "https://metadata.security.debian.org/changelogs/main/w/wireshark/stable_README.Debian",
+    "https://wiki.wireshark.org/CaptureSetup/CapturePrivileges"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "cap.perm.mac",
+   "text": "macOS: tcpdump is built in but needs /dev/bpf* access: install Wireshark's ChmodBPF package (in the .dmg) or brew install --cask wireshark-chmodbpf. Without it capture needs sudo.",
+   "sources": [
+    "https://www.wireshark.org/docs/wsug_html_chunked/ChBuildInstallOSXInstall.html",
+    "https://formulae.brew.sh/cask/wireshark-chmodbpf"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "cap.perm.win",
+   "text": "Windows: needs Npcap installed by the user (silent install is OEM-only). Leave 'restrict to Administrators' off or every capture triggers UAC. Use dumpcap/tshark from the Wireshark folder (usually C:\\Program Files\\Wireshark). The laptop agent should detect Npcap and show an install link if missing.",
+   "sources": [
+    "https://npcap.com/guide/npcap-users-guide.html"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "cap.wifi",
+   "text": "Pi onboard Wi-Fi monitor mode needs nexmon/Kali firmware and is unstable; don't rely on it. Use the Alfa USB adapter from the Site Rig parts list for Wi-Fi capture if ever needed.",
+   "sources": [
+    "https://www.kali.org/blog/raspberry-pi-wi-fi-glow-up/"
+   ],
+   "strength": "medium"
+  }
+ ],
+ "visibility": [
+  {
+   "id": "vis.normal_port",
+   "text": "A normal switch port sees only: traffic to/from the agent, broadcast, multicast (all of it if IGMP snooping is off, only joined groups if on), and brief unknown-unicast floods. It does NOT see unicast between other devices. Say this in the UI so nobody thinks 'no traffic' means 'no problem'.",
+   "sources": [
+    "https://wiki.wireshark.org/CaptureSetup/Ethernet"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "vis.detect_mirror",
+   "text": "Auto-detect mirror/hub visibility: over 10 s count unicast frames (I/G bit clear) where neither src nor dst MAC is the agent's. If more than 50 such frames from 3+ distinct MAC pairs, or any TCP flow between two other hosts, mark 'Mirror port: seeing all traffic'. Otherwise 'Normal port: broadcast/multicast + own traffic only'.",
+   "sources": [
+    "https://wiki.wireshark.org/CaptureSetup/Ethernet"
+   ],
+   "strength": "heuristic",
+   "rule": {
+    "window_s": 10,
+    "min_frames": 50,
+    "min_pairs": 3
+   }
+  },
+  {
+   "id": "vis.mirror_speed",
+   "text": "The mirror destination port must be at least as fast as the ports it mirrors (or the sum of them), or packets are dropped silently.",
+   "sources": [
+    "https://wiki.wireshark.org/CaptureSetup/Ethernet"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "vis.mirror.unifi",
+   "text": "UniFi: Port Mirroring on all switches except Flex models; one source port per mirror. In the Network app: Devices > switch > Port Manager > select the Pi's port > Operation: Mirroring > choose the source port. (Exact menu names vary by version.)",
+   "sources": [
+    "https://forums.lawrencesystems.com/t/can-unifi-switches-support-a-span-port/26162"
+   ],
+   "strength": "unverified"
+  },
+  {
+   "id": "vis.mirror.netgear",
+   "text": "Netgear M4250 (AV UI): Diagnostics > Port Mirroring > enable, pick source and destination ports, Apply. The destination port must not be in an active Network Profile.",
+   "sources": [
+    "https://support.qsys.com/application-notes/how-to-%7C-setting-up-port-mirroring-on-an-m4250-switch"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "vis.mirror.cisco",
+   "text": "Cisco SG350/CBS: Advanced display mode > Status and Statistics > SPAN & RSPAN > Session Destinations (Local Interface = Pi port) > Session Sources (same session, Rx and Tx). Older SG300: 'Port and VLAN Mirroring'.",
+   "sources": [
+    "https://docs.telosalliance.com/docs/configuring-a-monitor-span-port-on-a-cisco-sg350"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "vis.mirror.araknis",
+   "text": "Araknis AN-620: Ports > General > Mirror > Session ID + Destination, Options > add source ports with Rx/Tx/both, Apply. To stop, tick Clear Session. Other Araknis series may differ.",
+   "sources": [
+    "https://help.snapone.com/an-620-sw-um/Content/UM%20Topics/Settings.htm"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "vis.inline",
+   "text": "For one device's full traffic without a mirror port: Pi inline bridge (br0 = eth0 + USB3 gigabit NIC) between the device and the switch, capture on br0. Pi 4/5 onboard Ethernet is not on USB, so this works far better than on a Pi 3.",
+   "sources": [
+    "https://github.com/mellow-hype/rpi-tap",
+    "https://forum.openwrt.org/t/rpi4-routing-performance-numbers/53996"
+   ],
+   "strength": "medium"
+  }
+ ],
+ "presets": [
+  {
+   "id": "bpf.artnet",
+   "text": "Art-Net: udp port 6454",
+   "sources": [
+    "https://art-net.org.uk/downloads/art-net.pdf",
+    "https://help.malighting.com/grandMA3/2.5/HTML/network_design_protocols.html"
+   ],
+   "strength": "strong",
+   "bpf": "udp port 6454"
+  },
+  {
+   "id": "bpf.sacn",
+   "text": "sACN: udp port 5568 and dst net 239.255.0.0/16. Shure SDT also uses UDP 5568, so check the ACN root layer ('ASC-E1.17') before labelling a packet sACN.",
+   "sources": [
+    "https://help.malighting.com/grandMA3/2.5/HTML/network_design_protocols.html",
+    "https://www.manualslib.com/manual/1616130/Shure-Mxa910.html?page=51"
+   ],
+   "strength": "strong",
+   "bpf": "udp port 5568 and dst net 239.255.0.0/16"
+  },
+  {
+   "id": "bpf.sddp",
+   "text": "Control4 SDDP: udp port 1902 (multicast 239.255.255.250).",
+   "sources": [
+    "https://github.com/sammck/sddp-discovery-protocol"
+   ],
+   "strength": "medium",
+   "bpf": "udp port 1902"
+  },
+  {
+   "id": "bpf.mdns",
+   "text": "mDNS: udp port 5353",
+   "sources": [],
+   "strength": "strong",
+   "bpf": "udp port 5353"
+  },
+  {
+   "id": "bpf.ssdp",
+   "text": "SSDP: udp port 1900 and dst host 239.255.255.250",
+   "sources": [],
+   "strength": "strong",
+   "bpf": "udp port 1900"
+  },
+  {
+   "id": "bpf.dhcp",
+   "text": "DHCP: udp port 67 or udp port 68",
+   "sources": [
+    "https://media.extron.com/public/download/files/userman/68-2961-01_G_CtrlSystNetworkPortsnLicenses.pdf"
+   ],
+   "strength": "strong",
+   "bpf": "udp port 67 or udp port 68"
+  },
+  {
+   "id": "bpf.ptp",
+   "text": "PTP (Dante v1, AES67/Q-SYS v2): udp port 319 or udp port 320, group 224.0.1.129; read the version byte to split v1 and v2. AES67 uses PTPv2 domain 0.",
+   "sources": [
+    "https://www.rfc-editor.org/rfc/rfc9760.html",
+    "https://audinate.com/faq/which-network-ports-does-dante-use",
+    "https://dev.audinate.com/GA/ddm/userguide/1.8/webhelp/content/appendix/aes67_and_smpte_domains.htm"
+   ],
+   "strength": "strong",
+   "bpf": "udp port 319 or udp port 320"
+  },
+  {
+   "id": "bpf.dante",
+   "text": "Dante: unicast audio udp portrange 14336-14600; multicast audio udp port 4321 (239.255.0.0/16); AES67 audio udp 5004 (239.69.0.0/16); control udp 4440/4444/4455, 8800, multicast 8700-8708 (224.0.0.230-233); SAP udp 9875 (239.255.255.255); mDNS _netaudio-arc/_netaudio-cmc/_netaudio-dbc/_netaudio-chan._udp. Note Dante TFTP 6969 overlaps Sonos 6969.",
+   "sources": [
+    "https://audinate.com/faq/which-network-ports-does-dante-use",
+    "https://docs.rs/dante-control-rs/0.8.2/src/dante_control_rs/lib.rs.html"
+   ],
+   "strength": "strong",
+   "bpf": "udp portrange 14336-14600 or udp port 4321 or udp port 5004 or udp portrange 8700-8708 or udp port 8800 or udp port 4440 or udp port 4444 or udp port 4455 or udp port 9875"
+  },
+  {
+   "id": "bpf.qsys",
+   "text": "Q-SYS: discovery QDP udp 2467-2470 (224.0.23.175) and 6504; Q-LAN audio udp 6518-7030; control tcp 1702/1704/1710 (1710 is JSON-RPC control, not discovery); PTPv2.",
+   "sources": [
+    "https://help.qsys.com/Content/Networking/Interfaces_Services.htm"
+   ],
+   "strength": "strong",
+   "bpf": "udp portrange 2467-2470 or port 6504 or udp portrange 6518-7030 or tcp port 1702 or tcp port 1710"
+  },
+  {
+   "id": "bpf.ndi",
+   "text": "NDI: mDNS 5353, discovery server tcp 5959, source query tcp 5960, streams tcp 5961+, reliable UDP 5960+, multicast/multi-TCP 6960+/7960+.",
+   "sources": [
+    "https://docs.ndi.video/all/getting-started/white-paper/ndi-related-network-ports"
+   ],
+   "strength": "strong",
+   "bpf": "tcp portrange 5959-5970 or udp portrange 5960-5970"
+  },
+  {
+   "id": "bpf.sonos",
+   "text": "Sonos: tcp 1400, 1443, 3400-3401, 3500, 4444, 7000-7003; udp 1900-1901, 5353, 6969, 10243, 10280-10284.",
+   "sources": [
+    "https://support.sonos.com/en-gb/article/configure-your-firewall-to-work-with-sonos"
+   ],
+   "strength": "strong",
+   "bpf": "tcp port 1400 or tcp port 1443 or udp port 6969 or udp portrange 10280-10284"
+  },
+  {
+   "id": "bpf.airplay",
+   "text": "AirPlay: tcp 7000, 5000, 6000, 554, 3689; udp 5353; dynamic 49152-65535.",
+   "sources": [
+    "https://support.apple.com/103229"
+   ],
+   "strength": "strong",
+   "bpf": "tcp port 7000 or tcp port 5000"
+  },
+  {
+   "id": "bpf.crestron",
+   "text": "Crestron CIP: tcp/udp 41794, tcp 41796 with SSL.",
+   "sources": [
+    "https://de.crestron.com/getmedia/4292ddca-5063-4b79-8d61-9b29fbb425eb/mg_sr_ip-guidelines-for-the-it-professional"
+   ],
+   "strength": "strong",
+   "bpf": "port 41794 or tcp port 41796"
+  },
+  {
+   "id": "bpf.savant",
+   "text": "Savant: udp broadcast 9101 and 12004, multicast 1900, speakers to host tcp 3401.",
+   "sources": [
+    "https://support.savant.com/savant1x/articles/en_US/Support_Article/Network-Troubleshooting-Guide/"
+   ],
+   "strength": "strong",
+   "bpf": "udp port 9101 or udp port 12004 or tcp port 3401"
+  },
+  {
+   "id": "bpf.shure",
+   "text": "Shure: SLP udp 8427, ASCII control tcp 2202, SDT udp 5568, mDNS.",
+   "sources": [
+    "https://www.manualslib.com/manual/1616130/Shure-Mxa910.html?page=51"
+   ],
+   "strength": "strong",
+   "bpf": "udp port 8427 or tcp port 2202"
+  },
+  {
+   "id": "bpf.extron",
+   "text": "Extron: udp 4502 discovery broadcast.",
+   "sources": [
+    "https://media.extron.com/public/download/files/userman/68-2961-01_G_CtrlSystNetworkPortsnLicenses.pdf"
+   ],
+   "strength": "strong",
+   "bpf": "udp port 4502"
+  },
+  {
+   "id": "bpf.knx",
+   "text": "KNX IP: udp 3671, multicast 224.0.23.12.",
+   "sources": [
+    "https://nmap.org/nsedoc/scripts/knx-gateway-discover.html"
+   ],
+   "strength": "strong",
+   "bpf": "udp port 3671"
+  },
+  {
+   "id": "bpf.infra",
+   "text": "Infrastructure: igmp; arp; STP ether dst 01:80:c2:00:00:00.",
+   "sources": [],
+   "strength": "strong",
+   "bpf": "igmp or arp or ether dst 01:80:c2:00:00:00"
+  },
+  {
+   "id": "bpf.default",
+   "text": "Default always-on capture (cheap, header-only): broadcast or multicast or arp or igmp or stp or DHCP or PTP. That powers every fault rule below without seeing private unicast payloads.",
+   "sources": [],
+   "strength": "heuristic",
+   "bpf": "broadcast or multicast or arp or igmp or ether dst 01:80:c2:00:00:00 or udp port 67 or udp port 68"
+  }
+ ],
+ "faults": [
+  {
+   "id": "flt.bcast",
+   "text": "Broadcast storm: baseline first (healthy small LANs are often under 10 pps). Warn above 100 pps broadcast sustained 10 s, alarm above 1000 pps. Show the top talkers. No authoritative number exists; Cisco forum practice is 10-100 pps per access port.",
+   "sources": [
+    "https://community.cisco.com/t5/switching/what-pps-values-you-recommend-for-storm-control-multicast-and/td-p/3051215",
+    "https://community.cisco.com/t5/switching/storm-control-guidelines-and-best-practices/td-p/1279966"
+   ],
+   "strength": "heuristic",
+   "rule": {
+    "warn_pps": 100,
+    "alarm_pps": 1000,
+    "sustain_s": 10
+   }
+  },
+  {
+   "id": "flt.igmp.querier",
+   "text": "IGMP querier: queries every 125 s by default (RFC 3376). No Membership Query seen for 260 s = 'No IGMP querier' (multicast will stop after snooping timeouts). Queries from 2+ different source IPs = 'Multiple queriers' (Shure links this to intermittent Dante audio).",
+   "sources": [
+    "https://www.rfc-editor.org/rfc/rfc3376",
+    "https://service.shure.com/articles/en_US/Knowledge/dante-networks-and-igmp-snooping"
+   ],
+   "strength": "strong",
+   "rule": {
+    "no_querier_s": 260
+   }
+  },
+  {
+   "id": "flt.mcast.flood",
+   "text": "Multicast flooding: if the agent receives sACN (239.255/16 on 5568), Dante (239.255/16:4321) or AES67 (239.69/16) groups it never joined, IGMP snooping is off or not working on this switch. Flag, and warn it will also flood Wi-Fi.",
+   "sources": [
+    "https://service.shure.com/articles/en_US/Knowledge/dante-networks-and-igmp-snooping",
+    "https://audinate.com/faq/which-network-ports-does-dante-use"
+   ],
+   "strength": "medium"
+  },
+  {
+   "id": "flt.dhcp.rogue",
+   "text": "Rogue DHCP: 2+ distinct server identifiers answering (OFFER/ACK) within 30 s, or for the same transaction ID. Name both servers (IP, MAC, vendor).",
+   "sources": [
+    "https://www.elastic.co/guide/en/security/8.19/multiple-dhcp-servers-responding-to-the-same-transaction.html"
+   ],
+   "strength": "strong",
+   "rule": {
+    "window_s": 30,
+    "min_servers": 2
+   }
+  },
+  {
+   "id": "flt.dhcp.exhaust",
+   "text": "DHCP trouble: DISCOVERs with no OFFER within 10 s (repeated 3 times), or NAKs. Suggests a full pool or dead server.",
+   "sources": [],
+   "strength": "unverified"
+  },
+  {
+   "id": "flt.arp.dup",
+   "text": "Duplicate IP: the same IP claimed by 2 MACs in ARP replies/gratuitous ARP (Wireshark arp.duplicate-address-frame). Alarm with both MACs and vendors.",
+   "sources": [
+    "https://support.qsys.com/tips/tip-using-wireshark-to-detect-duplicate-ip-addresses-on-your-network"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "flt.tcp.retrans",
+   "text": "TCP retransmissions (mirror or own traffic only): on a LAN above 1% investigate, above 5% alarm.",
+   "sources": [
+    "https://lists.wireshark.org/archives/ethereal-users/200509/msg00112.html"
+   ],
+   "strength": "medium",
+   "rule": {
+    "warn_pct": 1,
+    "alarm_pct": 5
+   }
+  },
+  {
+   "id": "flt.stp.tc",
+   "text": "STP topology changes: count TCN BPDUs and BPDUs with the TC flag. Each one drops MAC aging from 300 s to 15 s for about 35 s (floods unicast). More than 1 per 10 minutes on a stable site = a port flapping (often a device rebooting without portfast/edge).",
+   "sources": [
+    "https://networklessons.com/spanning-tree/spanning-tree-topology-change-notification-tcn"
+   ],
+   "strength": "medium",
+   "rule": {
+    "warn_per_10min": 1
+   }
+  },
+  {
+   "id": "flt.ptp.leader",
+   "text": "PTP: track grandmasterIdentity from Announce per domain. Alarm when it changes, when 2+ Announce sources persist in one domain, or when Announce stops for more than 4 s (1/s default, timeout 3-4 intervals).",
+   "sources": [
+    "https://www.rfc-editor.org/rfc/rfc9760.html",
+    "https://www.Cisco.com/c/en/us/support/docs/switches/catalyst-9300-series-switches/221062-troubleshoot-precision-time-protocol-pt.html"
+   ],
+   "strength": "strong",
+   "rule": {
+    "announce_timeout_s": 4
+   }
+  },
+  {
+   "id": "flt.dscp",
+   "text": "QoS check: Dante PTP should be DSCP 56 (CS7) and audio 46 (EF). Q-SYS defaults differ (PTP 46, audio 34, video 26). Flag Dante packets with DSCP 0 (QoS not set) and mixed Dante+Q-SYS sites with conflicting QoS.",
+   "sources": [
+    "https://audinate.com/faq/how-does-dante-use-dscp-diffserv-priority-values-when-configuring-qos",
+    "https://help.qsys.com/Content/Networking/QoS.htm"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "flt.eee",
+   "text": "If PTP leader changes or jitter show up, advise turning off Energy Efficient Ethernet on switch ports (Audinate: EEE causes poor sync and dropouts). It can't be seen in packets.",
+   "sources": [
+    "https://www.audinate.com/learning/faqs/can-i-use-eee-energy-efficient-ethernet-or-green-ethernet-in-my-dante-network"
+   ],
+   "strength": "strong"
+  }
+ ],
+ "streaming": [
+  {
+   "id": "str.sse",
+   "text": "Send live summaries to the page with one Server-Sent Events stream per tab (all event types multiplexed), 1-2 updates per second. Browsers allow only 6 HTTP/1.1 connections per host, so never open more than one SSE per page. Use plain POSTs for start/stop/filter. WebSocket only if bidirectional streaming is ever needed.",
+   "sources": [
+    "https://developer.mozilla.org/en-US/docs/Web/API/Server-sent_events/Using_server-sent_events",
+    "https://textslashplain.com/2019/12/04/the-pitfalls-of-eventsource-over-http-1-1/"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "str.sse.flush",
+   "text": "Turn off compression on the SSE response (or flush per event) so updates aren't held in a buffer; send a comment line every 15 s as a keep-alive.",
+   "sources": [],
+   "strength": "heuristic"
+  },
+  {
+   "id": "str.ring",
+   "text": "Keep summaries, not packets, in Node memory: per-second counters for 10 minutes, the last 2000 decoded header rows, and per-host/per-protocol totals. Raw packets live only in the dumpcap ring buffer on disk.",
+   "sources": [],
+   "strength": "heuristic",
+   "rule": {
+    "counter_window_s": 600,
+    "rows": 2000
+   }
+  },
+  {
+   "id": "str.pcap",
+   "text": "pcap download: serve the ring buffer files (or a time slice) as Content-Type application/vnd.tcpdump.pcap with Content-Disposition attachment; classic pcap header magic 0xA1B2C3D4, version 2.4, LinkType 1 (Ethernet), non-zero SnapLen.",
+   "sources": [
+    "https://www.ietf.org/archive/id/draft-ietf-opsawg-pcap-09.html"
+   ],
+   "strength": "strong"
+  }
+ ],
+ "privacy": [
+  {
+   "id": "prv.snaplen",
+   "text": "Header-only capture: snaplen 128 (IPv4/IPv6 + TCP/UDP headers). tcpdump's default is 262144 (full payload). Use 256-512 only for the discovery protocols that need payload (mDNS, SSDP, SDDP, DHCP, Art-Net poll replies).",
+   "sources": [
+    "https://www.man7.org/linux/man-pages/man1/tcpdump.1.html",
+    "https://wiki.wireshark.org/SnapLen"
+   ],
+   "strength": "strong",
+   "rule": {
+    "default_snaplen": 128,
+    "discovery_snaplen": 512
+   }
+  },
+  {
+   "id": "prv.local",
+   "text": "Packets and pcaps stay on the agent and the engineer's device. Never upload payloads or pcaps to Supabase; upload only fault summaries and counts.",
+   "sources": [
+    "https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/personal-information-what-is-it/what-is-personal-data/what-are-identifiers-and-related-factors/"
+   ],
+   "strength": "heuristic"
+  },
+  {
+   "id": "prv.identifiers",
+   "text": "IP and MAC addresses can be personal data (ICO). In uploaded summaries keep device names from the Network Map but drop or hash unknown client MACs/IPs with a per-site salt.",
+   "sources": [
+    "https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/personal-information-what-is-it/what-is-personal-data/what-are-identifiers-and-related-factors/"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "prv.consent",
+   "text": "Treat capture like monitoring: tell the client, capture for the shortest time that answers the question, use the least intrusive filter, note consent on the job. A full mirror-port capture needs explicit client OK.",
+   "sources": [
+    "https://ico.org.uk/for-organisations/uk-gdpr-guidance-and-resources/employment/monitoring-workers/data-protection-and-monitoring-workers/"
+   ],
+   "strength": "medium"
+  },
+  {
+   "id": "prv.autostop",
+   "text": "Auto-stop any capture after 30 minutes unless renewed, and delete ring files when the job is closed.",
+   "sources": [],
+   "strength": "heuristic",
+   "rule": {
+    "auto_stop_min": 30
+   }
+  }
+ ],
+ "android": [
+  {
+   "id": "and.vpnservice",
+   "text": "Android without root can only capture its own traffic (VpnService, as PCAPdroid does), needs a VPN consent dialog, blocks any other VPN, and can't see hotspot clients or the rest of the LAN. None of the fault rules (storms, querier, rogue DHCP, PTP) can run. Not worth building in.",
+   "sources": [
+    "https://emanuele-f.github.io/PCAPdroid/faq",
+    "https://developer.android.com/develop/connectivity/vpn"
+   ],
+   "strength": "strong"
+  },
+  {
+   "id": "and.pcapdroid",
+   "text": "If needed for app debugging (e.g. why the Sonos app on this tablet can't see a speaker), accept a PCAPdroid pcap or its pcap-over-IP stream into the Traffic tab instead of building capture into our app. The tablet's job is to view the Pi's Traffic tab.",
+   "sources": [
+    "https://emanuele-f.github.io/PCAPdroid/dump_modes"
+   ],
+   "strength": "medium"
+  }
+ ]
+}

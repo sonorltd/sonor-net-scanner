@@ -1,4 +1,4 @@
-/* sonor-wireless.js v1.2.0 (2026-11-24) — the ONE wireless toolkit for every Sonor app (window.SonorWireless, or require()).
+/* sonor-wireless.js v1.3.0 (2026-11-24) — the ONE wireless toolkit for every Sonor app (window.SonorWireless, or require()).
  * Wi-Fi ↔ Zigbee channel maths, the mesh systems and their maker codes, RF / Zigbee hub guidance, the probe grades,
  * the RF frequencies and the Sonor probe HTTP paths. Used by Network Scanner (page, Pi agent, Android agent) and meant
  * for Takeoffs' wireless planning layer, Site and Remotes, so a channel, a grade or a hub tip means the same everywhere.
@@ -19,10 +19,10 @@ function zigbeeLoad(nets) {   // per Zigbee channel: Wi-Fi spans covering its ce
     return { ch: k, freq: f, dbm: mw ? Math.round(10 * Math.log10(mw)) : null, score, who: who.sort((a, b) => b.signal - a.signal) }; });
 }
   const ZB_C4 = [15, 20, 25];   // c4.zigbee.channels
-  // Each Zigbee system runs its own mesh on one channel. k = key used in stored settings and uploads.
+  // Each Zigbee (802.15.4) system runs its own mesh on one channel. k = key used in stored settings and uploads.
+  // Heatmiser neo is NOT here: it is its own 868 MHz + 2.4 GHz mesh with no channel to set (neo.not_zigbee, v1.3.0).
 const ZB_SYS = [
   { k: 'c4', name: 'Control4', pref: [15, 20, 25], from: 'Composer › Network › Zigbee' },
-  { k: 'neo', name: 'Heatmiser neo', pref: null, from: 'neoHub' },
   { k: 'hue', name: 'Hue', pref: [11, 15, 20, 25], from: 'Hue app › Settings › Bridge' },
   { k: 'other', name: 'Other (Thread / Matter, Lutron Type X…)', pref: null, from: 'the hub' },
 ];
@@ -46,7 +46,7 @@ const zbMaker = (m) => { const o = ZB_OUI.find(([re]) => re.test(m.ext || '')); 
   };
 
   // ── Auto-match (zbm.auto.flow): which system is each mesh the probe heard? ──
-  // found: probe /scan meshes · lan: { neo: ch, hue: ch } channels read from hubs · thread: [{ xp, nn, vn }] from _meshcop._udp
+  // found: probe /scan meshes · lan: { hue: ch } channels read from hubs · thread: [{ xp, nn, vn }] from _meshcop._udp
   // Order: a channel read from a hub wins; then Thread by ext PAN; then the maker OUI hint; else a pre-filled dropdown.
   function autoMatch(found, lan, thread) {
     lan = lan || {}; thread = thread || [];
@@ -66,9 +66,87 @@ const RF_GUIDE = [
   { test: (d) => /lutron/i.test(d.make), band: 'Clear Connect Type A (UK/EU 868 MHz, US 434 MHz) or Type X (RA3, 2.4 GHz 802.15.4)', tips: ['Every device within 9 m of the processor or a repeater; repeaters within 18 m of each other (Lutron).', 'Never in a metal enclosure or rack.', 'UK systems are 868 MHz: a 433 MHz probe will not measure them; read the frequency on the model label.'] },
   { zb: true, test: (d) => /hue/i.test(d.make) || /hue bridge/i.test(d.kind), band: 'Zigbee 2.4 GHz (channel 11, 15, 20 or 25)', tips: ['Pick the Hue Zigbee channel away from the busiest Wi-Fi (the Zigbee tab shows the clearest channels here).', 'Mains-powered bulbs and plugs repeat: keep some always powered.'] },
   { zb: true, test: (d) => /control4/i.test(d.make) && /controller|director|core|ea-|ca-/i.test(`${d.kind} ${d.model}`), band: 'Zigbee 2.4 GHz mesh (Control4 lighting, keypads, remotes)', tips: ['Zigbee on 15, 20 or 25, picked on the Zigbee tab; never left on the default.', 'Mesh controller never in the rack (secondary controller centrally, or the C4-AK-3M antenna kit) and never on Wi-Fi; every AP at least 5 m away.', 'Max 70 nodes per mesh; 5–9 m between Zigbee devices.'] },
-  { zb: true, test: (d) => /heatmiser/i.test(d.make) || /neohub/i.test(d.kind), band: 'Zigbee 2.4 GHz (Heatmiser neo mesh: neoStat, neoAir, neoPlug)', tips: ['Its own Zigbee mesh, separate from Control4 and Hue: check which Zigbee channel the neoHub is on and keep it off the Control4 and Hue channels and away from the busiest Wi-Fi (Zigbee tab).', 'neoHub wired to the LAN, central and out of the rack; mains neoStats repeat, battery neoAir / neoStat-e do not, so plan a mains neoStat or neoPlug between the hub and far battery stats.', 'Control4 drives it over the neoHub local API (port 4242 legacy, 4243 websocket); give it a DHCP reservation.', 'Up to 32 devices per hub and about 40 m in open space (zbm.heatmiser.radio). neoHub Gen 3 also has an 868 MHz radio for the neoAir / RF kit; the neoHub mini is 868 MHz only.'] },
+  { test: (d) => /heatmiser/i.test(d.make) || /neohub/i.test(d.kind), band: 'Heatmiser neo mesh (its own radio, 868 MHz + 2.4 GHz, not Zigbee)', tips: ['Not Zigbee: neo is Heatmiser\'s own mesh with no channel to pick, so it is not on the Zigbee 11–26 plan and the Control4 / Hue channels do not affect it (neo.not_zigbee).', 'About 40 m in open space; plan each hop at about 15 m through no more than two internal walls (neo.range_open, neo.range_plan). Up to 32 devices per neoHub (neo.max_devices).', 'The neoHub is the coordinator, wired to the LAN, central and out of the rack. Mains neoStats, neoPlug and Boost are repeaters; battery neoAir is an end device only and never repeats, so put a repeater on every floor and between the hub and far neoAirs (neo.routers, neo.end, neo.per_floor).', 'Control4 drives it over the neoHub local API (port 4242 legacy, 4243 websocket); give it a DHCP reservation.'] },
   { test: (d) => /shelly/i.test(d.make), band: 'Wi-Fi 2.4 GHz', tips: ['Shelly relays sit in back boxes: check Wi-Fi at the box with the walk test before plastering.'] },
 ];
+
+  // ── Radio role per device (Takeoffs wireless contract v1, SonorWireless 1.4.0; APP - Takeoffs/docs/WIRELESS-CONTRACT.md) ──
+  // Same ids and the same built-in table as Takeoffs, so a device is a Repeater or an End device in every app.
+  // Precedence: the placement (sonorSymbol.radio = { system, role }) → the Library (sonor_blocks.metadata.radio = { system, role }
+  // or { none: true }) → the built-in guess below. radio.off / radio.none = not a radio.
+  const SYSTEMS = {
+    c4: { label: 'Control4 Zigbee', short: 'C4 ZB', tech: '802.15.4', band: '2.4 GHz', mesh: true, channelled: true },
+    hue: { label: 'Philips Hue', short: 'Hue', tech: '802.15.4', band: '2.4 GHz', mesh: true, channelled: true },
+    thread: { label: 'Thread / Matter', short: 'Thread', tech: '802.15.4', band: '2.4 GHz', mesh: true, channelled: true },
+    lutron_x: { label: 'Lutron Type X', short: 'LX', tech: '802.15.4', band: '2.4 GHz', mesh: true, channelled: true },
+    neo: { label: 'Heatmiser neo', short: 'neo', tech: 'neo mesh (not Zigbee)', band: '868 MHz + 2.4 GHz', mesh: true, channelled: false, range_open_m: 40, hop_m: 15, max_nodes: 32 },
+    lutron_a: { label: 'Lutron Clear Connect A', short: 'CCA', tech: 'Clear Connect A', band: '868 MHz (UK)', mesh: true, channelled: false },
+    rts: { label: 'Somfy RTS', short: 'RTS', tech: 'OOK one-way', band: '433.42 MHz', mesh: false, channelled: false },
+    io: { label: 'Somfy io', short: 'io', tech: 'FSK two-way', band: '868 MHz', mesh: false, channelled: false },
+    rako: { label: 'Rako wireless', short: 'Rako', tech: 'Rakom coded FM', band: '433.9 MHz', mesh: false, channelled: false },
+    bond: { label: 'Bond (learned RF)', short: 'Bond', tech: 'OOK/ASK learned', band: '300–450 MHz', mesh: false, channelled: false },
+    wifi: { label: 'Wi-Fi', short: 'Wi-Fi', tech: '802.11', band: '2.4 / 5 GHz', mesh: false, channelled: true },
+  };
+  // router = REPEATER (mains powered, relays the mesh) · end = END DEVICE ONLY (battery / sleepy, never relays)
+  const ROLES = { coordinator: 'Coordinator', router: 'Repeater', end: 'End device only', tx: 'One-way transmitter', rx: 'Receiver', bridge: 'Bridge', ap: 'Access point' };
+  // Built-in guess, copied from Takeoffs (sonor-takeoffs-wireless.js BUILTIN). First match wins: m = device model id, b = block code, l = label text.
+  const RADIO_BUILTIN = [
+    { m: /^C4-(L-KCB|SKCB|KEYPAD-BUS|KCB)/, none: true },
+    { m: /^C4-(CORE\d|CA\d+|EA\d)/, system: 'c4', role: 'coordinator' },
+    { m: /^C4-(L-(KC|KDS|CDSW|FSW|MDIM|NNDSW|SW|TV|UDIM)|SKC|SAPD|SDAPD|SDSW|SSW|DIM|SW|KD|APD)/, system: 'c4', role: 'router' },
+    { m: /^C4-SR\d+/, system: 'c4', role: 'end' },
+    { l: /control4.*(zigbee|wireless)|\bsr-?260\b/, system: 'c4', role: 'end' },
+    { m: /^HM-NEO-HUB/, system: 'neo', role: 'coordinator' },
+    { m: /^HM-NEO-(STAT|PLUG|ULTRA)|^HM-BOOST/, system: 'neo', role: 'router' },
+    { m: /^HM-NEO-AIR/, system: 'neo', role: 'end' },
+    { m: /^HM-(RF-SWITCH|UH8-RF)/, system: 'neo', role: 'rx' },
+    { b: /^CL-HM-06-NEO(HUB)/, system: 'neo', role: 'coordinator' },
+    { b: /^CL-HM-06-NEO(STAT|PLUG)/, system: 'neo', role: 'router' },
+    { b: /^CL-HM-06-NEOAIR/, system: 'neo', role: 'end' },
+    { l: /\bboost\b.*heatmiser|heatmiser.*\bboost\b/, system: 'neo', role: 'router' },
+    { l: /neohub/, system: 'neo', role: 'coordinator' },
+    { l: /neoair/, system: 'neo', role: 'end' },
+    { l: /neostat|neoplug|neoultra/, system: 'neo', role: 'router' },
+    { m: /^BOND-/, system: 'bond', role: 'bridge' },
+    { b: /BOND/, system: 'bond', role: 'bridge' },
+    { l: /tahoma|connexoon/, system: 'rts', role: 'bridge' },
+    { l: /\brts\b.*(transmitter|tx|remote)|somfy.*(telis|situo|smoove|transmitter)/, system: 'rts', role: 'tx' },
+    { l: /\bio\b.*(transmitter|remote)|somfy.*\bio\b/, system: 'io', role: 'tx' },
+    { m: /^RAKO-RAMPI/, none: true },
+    { m: /^RAKO-WRB/, system: 'rako', role: 'router' },
+    { m: /^RAKO-(RK-HUB|RX-LINK)/, system: 'rako', role: 'bridge' },
+    { m: /^RAKO-(RCM|RNC|RK-MOD|RK-EOS|RK-PIR|RAVIR|RMR-VF|RAMVR)/, system: 'rako', role: 'tx' },
+    { m: /^RAKO-(RMT|RML|RMS|RDA|RLED|RSR)/, system: 'rako', role: 'rx' },
+    { m: /^LUT-PICO/, system: 'lutron_a', role: 'tx' },
+    { l: /lutron.*(hybrid )?repeater/, system: 'lutron_a', role: 'router' },
+    { l: /\b(ra2|ra3|radiora|caseta|caséta)\b.*(processor|main repeater|hub|bridge)/, system: 'lutron_a', role: 'coordinator' },
+    { l: /lutron.*type x|athena.*wireless/, system: 'lutron_x', role: 'router' },
+    { l: /hue bridge|philips hue.*bridge/, system: 'hue', role: 'coordinator' },
+    { l: /\bhue\b.*(bulb|lamp|light|strip|plug)/, system: 'hue', role: 'router' },
+    { l: /thread border router|matter.*(hub|controller)/, system: 'thread', role: 'coordinator' },
+  ];
+  const _num = (v) => { const n = Number(v); return v != null && v !== '' && Number.isFinite(n) ? n : null; };
+  const _out = (r, source) => ({ system: r.system, role: r.role || 'end', roleLabel: ROLES[r.role || 'end'] || r.role, systemLabel: SYSTEMS[r.system].label, range_m: _num(r.range_m), source });
+  // radioOf(placement, libRow, opts) → { system, role, roleLabel, systemLabel, range_m, source: placement|library|builtin } | null (not a radio)
+  //   placement: a Takeoffs symbol (or { sonorSymbol }) with .radio, .block_code, .device_model_id, .label — or a scanned device { make, kind, model }
+  //   libRow: the sonor_blocks row (metadata.radio, device_model_id, block_code, label) · opts.isWap → Wi-Fi access point
+  function radioOf(placement, libRow, opts) {
+    opts = opts || {}; const sym = (placement && placement.sonorSymbol) || placement || {};
+    const o = sym.radio;
+    if (o && (o.off || o.none)) return null;
+    if (o && o.system && SYSTEMS[o.system]) return _out(o, 'placement');
+    const meta = (libRow && (libRow.metadata || libRow.block_metadata)) || {};
+    const lr = meta.radio;
+    if (lr && (lr.none || lr.off)) return null;
+    if (lr && lr.system && SYSTEMS[lr.system]) return _out(lr, 'library');
+    if (opts.isWap) return _out({ system: 'wifi', role: 'ap' }, 'builtin');
+    const model = String((libRow && libRow.device_model_id) || sym.device_model_id || '').toUpperCase();
+    const bc = String(sym.block_code || (libRow && libRow.block_code) || '').toUpperCase();
+    const label = [sym.label, libRow && libRow.label, meta.brand, meta.model_no, sym.make, sym.kind, sym.model].map((x) => String(x == null ? '' : x).toLowerCase()).join(' ');
+    for (const r of RADIO_BUILTIN) if ((r.m && model && r.m.test(model)) || (r.b && r.b.test(bc)) || (r.l && r.l.test(label))) return r.none ? null : _out(r, 'builtin');
+    return null;
+  }
+  const isRepeater = (r) => !!r && (r.role === 'router' || r.role === 'coordinator');
   const guideFor = (d) => RF_GUIDE.find((g) => g.test(d)) || null;
   // rf.probe.grades (heuristic: calibrate on the first unit): graded on the worse of level and margin
 const RF_LEVELS = { solid: { dbm: -80, margin: 20 }, marginal: { dbm: -95, margin: 10 } };
@@ -92,7 +170,9 @@ const rfVerdict = (m, peak) => { if (m == null) return ['—', '']; const p = pe
   //   GET /info → { v, kind, board, caps[], id, name, spot, battery (mV, -1 = USB), ssid, wifiRssi, uptime }
   //   GET /identify → blink 5 s · GET /spot?name=<room or device> → remember where it is (from the Takeoffs room list)
   // The site agent (Pi in the rack or a laptop) finds nodes locally and the page talks to them through it; no cloud table.
-  const NODE = { service: '_sonor-node._tcp', kinds: { rf: 'Sonor RF probe', zigbee: 'Sonor Zigbee probe', ircap: 'Sonor IR/RF capture node' } };
+  const NODE = { service: '_sonor-node._tcp', kinds: { rf: 'Sonor RF probe', zigbee: 'Sonor Zigbee probe', ircap: 'IR & RF capture node' },
+    // per kind: what it can do and which app owns it (kinds stays plain names for labels)
+    info: { ircap: { name: 'IR & RF capture node', caps: ['ir-rx', 'ir-tx', 'rf433-rx', 'rf433-tx'], hotspot: 'Sonor-Capture-XXXX', port: 80, app: 'ir-rf', appPort: 8052 } } };
   // HTTP path + timeout for one probe call; the Pi agent, the Android agent and any page use the same table.
   function probePath(kind, a) {
     a = a || {};
@@ -111,7 +191,8 @@ const rfVerdict = (m, peak) => { if (m == null) return ['—', '']; const p = pe
   // Research rules (wifi-rf-rules.json): load once, then API.rules[id] = { text, sources, strength, rule? }
   async function loadRules(url) { try { const r = await fetch(url || 'data/wifi-rf-rules.json'); const j = await r.json(); const list = Array.isArray(j) ? j : j.rules || []; API.rules = Object.fromEntries(list.map((x) => [x.id, x])); } catch (e) { API.rules = API.rules || {}; } return API.rules; }
 
-  const API = { VERSION: '1.2.0', ZB, ZB_C4, zbFreq, wifiFreq24, rfW, zigbeeLoad, ZB_SYS, ZB_LEVELS, zbVerdict, ZB_OUI, zbMaker,
-    ZB_ENERGY, energyVerdict, LAN, autoMatch, RF_GUIDE, guideFor, RF_LEVELS, rfVerdict, RF_FREQS, rfFreqFor, PROBES, NODE, probePath, isProbe, probeKindOf, loadRules, rules: {} };
+  const API = { VERSION: '1.3.0', ZB, ZB_C4, zbFreq, wifiFreq24, rfW, zigbeeLoad, ZB_SYS, ZB_LEVELS, zbVerdict, ZB_OUI, zbMaker,
+    ZB_ENERGY, energyVerdict, LAN, autoMatch, RF_GUIDE, guideFor, RF_LEVELS, rfVerdict, RF_FREQS, rfFreqFor, PROBES, NODE, probePath, isProbe, probeKindOf, loadRules, rules: {},
+    SYSTEMS, ROLES, RADIO_BUILTIN, radioOf, isRepeater };
   if (typeof module !== 'undefined' && module.exports) module.exports = API; else root.SonorWireless = API;
 })(typeof window !== 'undefined' ? window : globalThis);
