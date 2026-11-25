@@ -14,6 +14,7 @@
  * HTTP (CORS open, JSON):
  *   GET /rssi            → { v, mhz, rssi, floor, peak, peakAt, bursts, uptime, battery, ssid, wifiRssi }  (peak resets on read)
  *   GET /freq?mhz=433.92 → switch frequency (300–348, 387–464, 779–928 MHz depending on the module)
+ *   GET /aps             → Wi-Fi networks heard here (2.4 GHz) for the live channel monitor (v1.3.0)
  *   GET /wifi?ssid=..&pass=..  → save site Wi-Fi and reboot
  */
 #include <WiFi.h>
@@ -23,7 +24,7 @@
 #include <ELECHOUSE_CC1101_SRC_DRV.h>
 #include <algorithm>
 
-#define VERSION "1.2.0"
+#define VERSION "1.3.0"
 #define PIN_GDO0 4
 #define PIN_BATT 34          // optional: battery via 2 × 100k divider; reads 0 when not fitted
 
@@ -72,9 +73,27 @@ String nodeId() { uint64_t m = ESP.getEfuseMac(); char b[13]; snprintf(b, sizeof
 unsigned long blinkUntil = 0;
 #define PIN_LED 2   // DevKit blue LED
 
+
+// ── Wi-Fi scan (v1.3, sonor-wireless.js NODE cap wifi-scan): GET /aps answers from the last background scan and starts the next,
+// so a request never waits for the ~2 s channel sweep. The site Wi-Fi link pauses for a moment during each sweep.
+String apsJson = "{\"aps\":[]}"; unsigned long apsAt = 0; bool apsBusy = false;
+const char* apsSec(wifi_auth_mode_t m) { switch (m) { case WIFI_AUTH_OPEN: return "Open"; case WIFI_AUTH_WEP: return "WEP"; case WIFI_AUTH_WPA_PSK: return "WPA"; case WIFI_AUTH_WPA2_PSK: case WIFI_AUTH_WPA_WPA2_PSK: return "WPA2"; case WIFI_AUTH_WPA2_ENTERPRISE: return "WPA2-Enterprise"; case WIFI_AUTH_WPA3_PSK: return "WPA3"; case WIFI_AUTH_WPA2_WPA3_PSK: return "WPA2/WPA3"; default: return "?"; } }
+void apsTick() {
+  if (!apsBusy) return; int n = WiFi.scanComplete(); if (n == WIFI_SCAN_RUNNING) return; apsBusy = false; if (n < 0) return;
+  String j = "{\"aps\":["; for (int i = 0; i < n && i < 60; i++) { String s = WiFi.SSID(i); s.replace("\"", "'"); s.replace("\\", "/");
+    j += String(i ? "," : "") + "{\"ssid\":\"" + s + "\",\"bssid\":\"" + WiFi.BSSIDstr(i) + "\",\"ch\":" + WiFi.channel(i) + ",\"rssi\":" + WiFi.RSSI(i) + ",\"sec\":\"" + apsSec(WiFi.encryptionType(i)) + "\"}"; }
+  j += "]}"; apsJson = j; apsAt = millis(); WiFi.scanDelete();
+}
+void onAps() {
+  cors(); if (WiFi.getMode() == WIFI_AP) { http.send(503, "application/json", "{\"error\":\"not on the site Wi-Fi yet (hotspot mode)\"}"); return; }
+  apsTick(); if (!apsBusy && millis() - apsAt > 3000) { WiFi.scanNetworks(true, true, false, 110); apsBusy = true; }
+  String r = "{\"v\":\"" VERSION "\",\"band\":\"2.4 GHz\",\"at\":" + String(apsAt) + ",\"age_ms\":" + String(apsAt ? millis() - apsAt : -1) + "," + apsJson.substring(1);
+  http.send(200, "application/json", r);
+}
+
 void onInfo() {
   cors(); char b[460];
-  snprintf(b, sizeof b, "{\"v\":\"%s\",\"kind\":\"rf\",\"board\":\"esp32\",\"caps\":[\"rf433-rssi\",\"rf868-rssi\"],\"id\":\"%s\",\"name\":\"sonor-rf-%s\",\"spot\":\"%s\",\"battery\":%d,\"ssid\":\"%s\",\"wifiRssi\":%d,\"uptime\":%lu}",
+  snprintf(b, sizeof b, "{\"v\":\"%s\",\"kind\":\"rf\",\"board\":\"esp32\",\"caps\":[\"rf433-rssi\",\"rf868-rssi\",\"wifi-scan\"],\"id\":\"%s\",\"name\":\"sonor-rf-%s\",\"spot\":\"%s\",\"battery\":%d,\"ssid\":\"%s\",\"wifiRssi\":%d,\"uptime\":%lu}",
     VERSION, nodeId().c_str(), nodeId().substring(8).c_str(), prefs.getString("spot", "").c_str(), battery(), WiFi.SSID().c_str(), WiFi.RSSI(), millis() / 1000);
   http.send(200, "application/json", b);
 }
@@ -90,15 +109,15 @@ void setup() {
   WiFi.mode(WIFI_STA); if (ssid.length()) { WiFi.begin(ssid.c_str(), pass.c_str()); for (int i = 0; i < 40 && WiFi.status() != WL_CONNECTED; i++) delay(250); }
   if (WiFi.status() != WL_CONNECTED) { WiFi.mode(WIFI_AP); WiFi.softAP("Sonor-RF-Probe", "sonorprobe"); }
   String host = "sonor-rf-" + String((uint32_t)ESP.getEfuseMac() & 0xFFFF, HEX);
-  if (MDNS.begin(host.c_str())) { MDNS.addService("sonor-rf", "tcp", 80); MDNS.addServiceTxt("sonor-rf", "tcp", "id", nodeId().c_str()); MDNS.addServiceTxt("sonor-rf", "tcp", "kind", "rf"); MDNS.addServiceTxt("sonor-rf", "tcp", "spot", prefs.getString("spot", "").c_str()); MDNS.addService("sonor-node", "tcp", 80); MDNS.addServiceTxt("sonor-node", "tcp", "id", nodeId().c_str()); MDNS.addServiceTxt("sonor-node", "tcp", "kind", "rf"); MDNS.addServiceTxt("sonor-node", "tcp", "caps", "rf433-rssi,rf868-rssi"); MDNS.addServiceTxt("sonor-node", "tcp", "spot", prefs.getString("spot", "").c_str()); }
+  if (MDNS.begin(host.c_str())) { MDNS.addService("sonor-rf", "tcp", 80); MDNS.addServiceTxt("sonor-rf", "tcp", "id", nodeId().c_str()); MDNS.addServiceTxt("sonor-rf", "tcp", "kind", "rf"); MDNS.addServiceTxt("sonor-rf", "tcp", "spot", prefs.getString("spot", "").c_str()); MDNS.addService("sonor-node", "tcp", 80); MDNS.addServiceTxt("sonor-node", "tcp", "id", nodeId().c_str()); MDNS.addServiceTxt("sonor-node", "tcp", "kind", "rf"); MDNS.addServiceTxt("sonor-node", "tcp", "caps", "rf433-rssi,rf868-rssi,wifi-scan"); MDNS.addServiceTxt("sonor-node", "tcp", "spot", prefs.getString("spot", "").c_str()); }
   http.on("/info", onInfo); http.on("/spot", onSpot); http.on("/identify", onIdentify);
-  http.on("/rssi", onRssi); http.on("/freq", onFreq); http.on("/wifi", onWifi); http.on("/", onWifi);
+  http.on("/rssi", onRssi); http.on("/freq", onFreq); http.on("/aps", onAps); http.on("/wifi", onWifi); http.on("/", onWifi);
   http.begin();
 }
 
 unsigned long last = 0;
 void loop() {
-  http.handleClient(); blinkTick();
+  http.handleClient(); blinkTick(); apsTick();
   if (millis() - last < 5) return; last = millis();
   rssiNow = ELECHOUSE_cc1101.getRssi();
   hist[hi] = rssiNow; hi = (hi + 1) % 400;

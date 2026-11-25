@@ -1,4 +1,4 @@
-# Sonor Network Scanner · v1.7.1
+# Sonor Network Scanner · v1.8.0
 
 A commissioning scanner for AV / Control4 sites. It finds every device on the network and says what it is in AV terms (make, model, firmware, serial where the device publishes it), checks the site against the project's plan in the Network Map app, and prints an as-found IP schedule.
 
@@ -71,6 +71,18 @@ Not done yet: hosting the page at apps.sonor.co.uk (needs the `sonorltd/sonor-ne
 - **Check against project** shows the project's uploaded scans (one master table, filtered per project) and the office's Unassigned
   list (attach to a project). **Review** opens an uploaded scan here; Fill MACs / Mark reviewed calls `net_scan_apply`, which writes
   the revision note into Network Map's history (`sonor_revisions`, app `network-map`: who scanned, who reviewed, what changed).
+
+## v1.8.0 (2026-11-25): live Wi-Fi channel monitor from every node
+- Wi-Fi tab ▸ Live channel monitor: this rig's (or tablet's) own radio plus every Sonor node with cap `wifi-scan` sample every 8 s, each in its own place. Grid = channel load per place (neighbours only: our SSIDs are left out), Now / Worst 10 min, 2.4 / 5 GHz, a waterfall per place, and the whole-site pick (the channel whose worst place is quietest; 2.4 from 1/6/11, 5 GHz non-DFS first). Flags: all of 1/6/11 busy in a room, strong networks on 2–5 / 7–10, crowded 5 GHz, no channel quiet everywhere. Uploads as netinfo.wifiMon.
+- Agent action `wifiMon({ ips, self })` (Pi / laptop and Android). Android throttles Wi-Fi scans (4 per 2 min in the foreground), so on a tablet the nodes do most of the sampling.
+- Probes 1.3.0 (rf-probe, zb-probe): GET /aps, cap `wifi-scan` (background scan, never blocks). sonor-wireless.js 1.4.0: NODE kind `multi` (Sonor site node), caps list, /aps + /spectrum contract, `wifiChannelLoad`, `sitePick`, `loadVerdict`. One shared firmware lives in APP - IR RF Capture/firmware (build flags per board).
+- Grades follow the research rules (wifi.mon.*): count networks at -85 dBm or louder; 2.4 GHz allows 2, 5 GHz allows 1. Crowded = over that, or a co-channel network at -67 or louder, or an overlapping one at -62 or louder. Clear = nothing co-channel at -85 or louder and nothing overlapping at -62 or louder. Each BSSID is the median of its last 5 sightings and drops after 3 misses. The channel advice is the minimax across rooms and only changes when the new pick is a grade or 6 dB better for 10 minutes.
+
+### Logging (Log tab, on the rig only)
+- Off by default. **Site visit** logs while you are on site and stops after 12 hours. **Trouble watch** leaves the rig logging for 1, 3, 7, 14 or 30 days and carries on through reboots. While a session is on, the header shows a red "Logging" pill on every tab.
+- Every tool logs into one session (tick boxes): Wi-Fi in every room (per-minute grades, BSSIDs appearing, going or changing channel, 6 dB rises), RF probes (floor, peak, bursts), Zigbee energy sweeps, Art-Net nodes coming and going, traffic (top protocols, talkers, faults), node online / offline with battery, and a rolling .pcap ring (5 min / 50 MB files) for Wireshark.
+- Look back: pick a session, a window (hour to 30 days), a tool, a kind or a search; the graph shows when things happened and the table what. Each session downloads as .jsonl.gz.
+- Files live on the Pi in `data/logs/` (one folder per session, one .jsonl per day), 2 GB cap, pruned 30 days after a session ends. Nothing goes to Supabase. Shared module: `lib/sitelog.js` (master `sonor-sitelog.js`, contract in CROSS-APP-CONTRACTS.md). The Android app answers "Logging runs on the Pi rig".
 
 ## v1.7.1 (2026-11-24): radio roles from the Library, Heatmiser neo is not Zigbee
 - sonor-wireless.js 1.3.0: `radioOf(placement, libRow)` gives each device its radio system and role (Repeater / End device only), from the Takeoffs placement (`sonorSymbol.radio`), then the Library (`sonor_blocks.metadata.radio`, `{none:true}` = not a radio), then the same built-in table Takeoffs uses. Contract: APP - Takeoffs/docs/WIRELESS-CONTRACT.md.

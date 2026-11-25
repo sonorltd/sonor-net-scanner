@@ -14,7 +14,7 @@ const tools = require('./lib/tools');
 const { netinfo, speedtest } = require('./lib/netinfo');
 const wifi = require('./lib/wifi');
 
-const VERSION = '1.7.1';
+const VERSION = '1.8.0';
 const PORT = Number(process.env.PORT || 8050);
 const DATA = process.env.NETSCAN_DATA || path.join(__dirname, 'scans');
 const PUBLIC = path.join(__dirname, 'public');
@@ -127,6 +127,16 @@ const actions = {
     }))).filter(Boolean).sort((a, b) => String(a.kind).localeCompare(b.kind) || String(a.spot || a.name).localeCompare(b.spot || b.name));
     nodeCache = { at: Date.now(), nodes }; return [200, nodeCache];
   },
+  // v1.8.0 live Wi-Fi channel monitor: this agent's own radio + every picked node with caps wifi-scan, in one call (no cloud)
+  wifiMon: async ({ ips, self = true } = {}) => {
+    const list = (Array.isArray(ips) ? ips : []).filter((ip) => net.isIp(ip)).slice(0, 16);
+    const mine = self ? wifi.survey().then((r) => ({ id: 'agent', kind: 'agent', name: os.hostname(), at: r.at, aps: r.networks.map((n) => ({ ssid: n.ssid, bssid: n.bssid, ch: n.channel, band: n.band, width: n.width, rssi: n.signal, sec: n.security })), note: r.note }))
+      .catch((e) => ({ id: 'agent', kind: 'agent', name: os.hostname(), error: e.message })) : null;
+    const nodes = list.map((ip) => probeGet('rf', ip, { op: 'aps' }).then(([, r]) => ({ id: ip, ip, kind: 'node', at: new Date().toISOString(), age_ms: r.age_ms, aps: (r.aps || []).map((a) => ({ ...a, band: a.band || (a.ch > 14 ? '5 GHz' : '2.4 GHz') })) }))
+      .catch((e) => ({ id: ip, ip, kind: 'node', error: e.message })));
+    const sources = (await Promise.all([mine, ...nodes].filter(Boolean)));
+    return [200, { at: new Date().toISOString(), sources }];
+  },
   node: async ({ ip, op, spot } = {}) => { if (!['info', 'identify', 'spot'].includes(op)) return [400, { error: 'op must be info, identify or spot' }]; const r = await probeGet('rf', ip, { op, spot }); if (op === 'spot' && nodeCache) nodeCache.at = 0; return r; },
 
   // Art-Net tab: ArtPoll (2.x, 10.x and each local broadcast, never 255.255.255.255) + sACN universe discovery. Discovery and info only:
@@ -213,8 +223,23 @@ function readBody(req) {
 }
 const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript', '.css': 'text/css', '.svg': 'image/svg+xml', '.json': 'application/json', '.png': 'image/png' };
 
+// Long-term site log (v1.8.0): shared sonor-sitelog.js session model, off until armed; lib/logger.js samples every tool while armed
+const SITELOG = require('./lib/sitelog').create({ dir: path.join(DATA, 'logs'), app: 'scanner' });
+let LOGGER = null;
+const startLogger = () => (LOGGER = LOGGER || require('./lib/logger').start({ dataDir: DATA, actions, probeGet, log: SITELOG }));
+actions.logger = async ({ op = 'get', cfg, session } = {}) => {
+  if (!LOGGER) return [503, { error: 'The logger only runs in the site agent' }];
+  if (op === 'start') { SITELOG.start(session || {}); LOGGER.sync(); }
+  if (op === 'stop') { SITELOG.stop('stopped from the page'); LOGGER.sync(); }
+  if (op === 'set') LOGGER.set(cfg);
+  return [200, { ...LOGGER.get(), sessions: SITELOG.sessions().slice(0, 30), alerts: SITELOG.alerts().slice(-100) }];
+};
+
+actions.logQuery = async (q = {}) => [200, SITELOG.query(q)];   // the same as GET /api/log, for pages that reach the agent through the bridge
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, 'http://x');
+  if (url.pathname.startsWith('/api/log/') || url.pathname === '/api/log') { if (SITELOG.handle(req, res, url)) return; }
   const m = url.pathname.match(/^\/api\/(\w+)$/);
   if (m && actions[m[1]]) {
     try {
@@ -236,6 +261,7 @@ const server = http.createServer(async (req, res) => {
 });
 
 if (require.main === module) {
+  startLogger();
   server.listen(PORT, '0.0.0.0', () => {
     console.log(`\nSonor Network Scanner v${VERSION} running.`);
     console.log(`  On this computer:  http://localhost:${PORT}`);
@@ -244,4 +270,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { server, actions, VERSION };
+module.exports = { server, actions, VERSION, startLogger, SITELOG };

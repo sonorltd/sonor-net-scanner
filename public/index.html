@@ -146,6 +146,9 @@ a { color: var(--accent-c); }
 .gcard .ln { font-size: 12px; color: var(--muted); margin-top: 2px; overflow-wrap: anywhere; }
 .ncards { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 8px; margin-top: 8px; }
 .ncard { background: var(--card); border: 1px solid var(--edge); border-left: 4px solid var(--c, var(--edge)); border-radius: 6px; padding: 8px 10px; min-width: 0; }
+.wmgridT { border-collapse: separate; border-spacing: 2px; font-size: 11px; } .wmgridT th { font-weight: 500; color: var(--muted); padding: 2px 4px; text-align: center; } .wmgridT th.ns { color: var(--txt); font-weight: 700; } .wmgridT th.dfs { font-style: italic; }
+.wmgridT td.pl { text-align: left; white-space: nowrap; padding: 4px 8px 4px 6px; border-left: 4px solid var(--c, var(--edge)); background: var(--card); cursor: pointer; } .wmgridT tr.sel td.pl { outline: 1px solid var(--accent-c); }
+.wmgridT td.hc { min-width: 26px; height: 26px; text-align: center; border-radius: 3px; color: #fff; font-family: 'DM Mono', monospace; font-size: 10px; }
 .ncard.off { opacity: .6; } .ncard.add { border-left-style: dashed; }
 .ncard .nhead { display: flex; gap: 6px; align-items: center; } .ncard .ln { font-size: 12px; color: var(--muted); margin-top: 3px; overflow-wrap: anywhere; }
 .gcard .ln b { color: var(--text); font-weight: 500; }
@@ -174,6 +177,7 @@ a { color: var(--accent-c); }
 <div class="bar">
   <span class="lbl">Scan</span>
   <span id="agentPill" class="pill info">Agent: …</span>
+  <span id="logPill" class="pill bad" hidden title="A log session is recording on the agent: open the Log tab"></span>
   <input id="targets" class="grow mono" list="subnetList" placeholder="Subnets to scan (blank = the agent's own), e.g. 192.168.1.0/24, 10.0.20.0/24">
   <input id="label" placeholder="Scan label, e.g. 1394 first fix" style="width:200px" class="hide-sm">
   <button id="scanBtn" class="primary">Scan network</button>
@@ -193,6 +197,7 @@ a { color: var(--accent-c); }
   <button data-tab="rf">RF</button>
   <button data-tab="artnet">Art-Net</button>
   <button data-tab="traffic">Traffic</button>
+  <button data-tab="log">Log<span class="count zero" id="logCount">0</span></button>
   <button data-tab="tools">Tools</button>
   <button data-tab="schedule">IP schedule</button>
 </div>
@@ -267,6 +272,19 @@ a { color: var(--accent-c); }
         <div style="overflow-x:auto;margin-top:10px"><table id="survTable"></table></div>
         <div class="muted small" id="survNote"></div>
       </div>
+      <div class="panel wide" id="wmonPanel"><span class="lbl">Live channel monitor · every node</span>
+        <div class="muted small">Every Sonor node with Wi-Fi scan (RF probes, Zigbee probes, site nodes) and this rig's own radio listen at once, each in its own place. The grid shows how busy each channel is in every room, so one channel plan suits the whole site, not just where the tablet is.</div>
+        <div class="ncards" id="wifiPick"></div>
+        <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:8px"><button id="wmonGo" class="primary">Start</button><label class="small"><input type="checkbox" id="wmonSelf" checked> This rig's own Wi-Fi</label>
+          <div class="seg" id="wmonBand"><button data-b="b24" class="on">2.4 GHz</button><button data-b="b5">5 GHz</button></div>
+          <div class="seg" id="wmonView"><button data-v="now" class="on">Now</button><button data-v="worst" title="Loudest reading in the last 10 minutes at each place">Worst 10 min</button></div><span class="muted small" id="wmonSum"></span></div>
+        <div class="gflags" id="wmonFlags" style="margin-top:10px"></div>
+        <div class="wrec" id="wmonRec"></div>
+        <div style="overflow-x:auto"><table class="wmgridT" id="wmonGrid"></table></div>
+        <div class="lbl" style="margin-top:10px" id="wmonFallLbl">Over time</div>
+        <canvas class="graph" id="wmonFall" width="1200" height="200"></canvas>
+        <div id="wmonLog" style="margin-top:8px"></div>
+      </div>
     </div>
   </section>
 
@@ -333,6 +351,29 @@ a { color: var(--accent-c); }
     </div>
   </section>
 
+  <section id="tab-log" hidden>
+    <div class="grid">
+      <div class="panel wide"><span class="lbl">Log session · on the site Pi</span>
+        <div class="muted small">Logging is off until you start it. <b>Site visit</b> records while you are on site and stops by itself after 12 hours. <b>Trouble watch</b> is for a problem site: leave the rig logging for 1 to 30 days, and it keeps going through reboots. Every tool logs at once: Wi-Fi in every room, RF and Zigbee probes, Art-Net, network traffic with a rolling .pcap for Wireshark, and every node going offline. Logs stay on the rig.</div>
+        <div id="logState" style="margin-top:10px"></div>
+        <div class="row" id="logStartRow" style="flex-wrap:wrap;gap:8px;margin-top:10px"><input id="logName" placeholder="What is it for? e.g. Kitchen keypad drops" style="flex:1;min-width:200px">
+          <select id="logMode"><option value="site">Site visit (stops after 12 h)</option><option value="watch:1">Trouble watch · 1 day</option><option value="watch:3">Trouble watch · 3 days</option><option value="watch:7" selected>Trouble watch · 7 days</option><option value="watch:14">Trouble watch · 14 days</option><option value="watch:30">Trouble watch · 30 days</option></select>
+          <button id="logStart" class="primary">Start logging</button></div>
+        <div class="row small" id="logTools" style="flex-wrap:wrap;gap:12px;margin-top:10px"></div>
+        <div class="gflags" id="logLive" style="margin-top:10px"></div>
+      </div>
+      <div class="panel wide"><span class="lbl">Look back</span>
+        <div class="row" style="flex-wrap:wrap;gap:8px"><select id="logSess" style="max-width:100%;min-width:0"><option value="">Every session</option></select>
+          <select id="logRange"><option value="3600000">Last hour</option><option value="21600000">Last 6 hours</option><option value="86400000" selected>Last 24 hours</option><option value="259200000">Last 3 days</option><option value="604800000">Last 7 days</option><option value="2592000000">Last 30 days</option></select>
+          <select id="logTool"><option value="">Every tool</option><option value="wifi">Wi-Fi</option><option value="rf">RF</option><option value="zigbee">Zigbee</option><option value="artnet">Art-Net</option><option value="traffic">Traffic</option><option value="nodes">Nodes</option><option value="log">Log</option></select>
+          <select id="logKind"><option value="alert,source">Alerts + changes</option><option value="alert">Alerts only</option><option value="">Everything</option><option value="minute">Minute summaries</option></select>
+          <input id="logQ" placeholder="Search: a room, an IP, a channel, an SSID…" style="flex:1;min-width:160px"><button id="logLoad">Show</button><span class="muted small" id="logSum"></span></div>
+        <canvas class="graph" id="logGraph" width="1200" height="150" style="height:130px;margin-top:10px"></canvas>
+        <div class="row small" id="logDl" style="flex-wrap:wrap;gap:8px;margin-top:6px"></div>
+        <div style="overflow-x:auto;max-height:560px;overflow-y:auto;margin-top:8px"><table id="logTable"></table></div>
+      </div>
+    </div>
+  </section>
   <section id="tab-traffic" hidden>
     <div class="grid">
       <div class="panel wide"><span class="lbl">Live traffic · what the agent's network port sees</span>
@@ -421,7 +462,7 @@ a { color: var(--accent-c); }
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = '1.7.1';
+const APP_VERSION = '1.8.0';
 const HOSTED_URL = 'https://apps.sonor.co.uk/sonor-net-scanner/';
 if (window.SonorHeader) {
   SonorHeader.init({ appName: 'Network Scanner', repo: 'sonor-net-scanner' });
@@ -530,12 +571,48 @@ async function demoApi(action, data = {}) {
         { ip: '192.168.1.91', port: 6454, firmware: '4.7', net: 0, sub: 0, oem: '0x6b4a', esta: '0x4442', maker: 'DMXking', shortName: 'eDMX4 PRO', longName: 'DMXking eDMX4 PRO · Cinema rack', report: '#0001 [0310] OK', ports: [P(1, 2, { outSacn: true }), P(2, 3, { outSacn: true, outMerging: true }), P(3, 4, { outData: false, outSacn: true }), P(4, 5, { outData: false })], style: 'Node', mac: '6C:EC:EB:12:40:9A', bindIndex: 1, rdm: true, indicator: loc('192.168.1.91'), webConfig: true, dhcp: true, dhcpCapable: true },
         { ip: '2.12.34.56', port: 6454, firmware: '2.0', net: 0, sub: 1, oem: '0x0431', esta: '0x0000', maker: '', shortName: 'NET-2/3', longName: 'Showtec NET-2/3 pocket', report: '#0001 [0002] OK', ports: [P(1, 16, { outData: false })], style: 'Node', mac: '00:1E:C0:22:33:44', bindIndex: 1, rdm: false, indicator: 'normal', webConfig: false, dhcp: false, dhcpCapable: false }] }; }
     case 'nodes': { await sleep(300); demo.nodes = demo.nodes || [
-        { ip: '192.168.1.77', id: '246F28A1B2C3', kind: 'rf', board: 'esp32+cc1101', caps: ['rf433-rx'], name: 'RF probe A', spot: 'Rack', battery: -1, wifiRssi: -44, v: '1.2.0', online: true },
-        { ip: '192.168.1.79', id: '246F28A1B9D0', kind: 'rf', board: 'esp32+cc1101', caps: ['rf433-rx'], name: 'RF probe B', spot: 'Master bedroom', battery: 3910, wifiRssi: -63, v: '1.2.0', online: true },
+        { ip: '192.168.1.77', id: '246F28A1B2C3', kind: 'rf', board: 'esp32+cc1101', caps: ['rf433-rssi', 'wifi-scan'], name: 'RF probe A', spot: 'Rack', battery: -1, wifiRssi: -44, v: '1.3.0', online: true },
+        { ip: '192.168.1.79', id: '246F28A1B9D0', kind: 'rf', board: 'esp32+cc1101', caps: ['rf433-rssi', 'wifi-scan'], name: 'RF probe B', spot: 'Master bedroom', battery: 3910, wifiRssi: -63, v: '1.3.0', online: true },
         { ip: '192.168.1.78', id: '404CCA5B107E', kind: 'zigbee', board: 'esp32-c6', caps: ['zigbee', 'thread'], name: 'Zigbee probe A', spot: 'Rack', battery: -1, wifiRssi: -41, v: '1.2.0', online: true },
-        { ip: '192.168.1.80', id: '404CCA5B2211', kind: 'zigbee', board: 'esp32-c6', caps: ['zigbee', 'thread'], name: 'Zigbee probe B', spot: 'Kitchen', battery: 3870, wifiRssi: -66, v: '1.2.0', online: true },
+        { ip: '192.168.1.80', id: '404CCA5B2211', kind: 'zigbee', board: 'esp32-c6', caps: ['zb-scan', 'zb-energy', 'zb-meter', 'wifi-scan'], name: 'Zigbee probe B', spot: 'Kitchen', battery: 3870, wifiRssi: -66, v: '1.3.0', online: true },
+        { ip: '192.168.1.82', id: '7C2C67D0A1F4', kind: 'multi', board: 'esp32-c5', caps: ['wifi-scan', 'wifi-scan-5', 'rf433-rssi', 'rf-sweep', 'sleep'], name: 'Site node 1', spot: 'Garden room', battery: 3980, wifiRssi: -71, v: '1.0.0', online: true },
         { ip: '192.168.1.81', id: '404CCA5B33A4', kind: 'zigbee', board: 'esp32-c6', caps: ['zigbee'], name: 'Zigbee probe C', spot: '', battery: 3400, wifiRssi: -80, v: '1.1.0', online: false }];
       return { at: Date.now(), nodes: demo.nodes }; }
+    case 'wifiMon': { await sleep(700); const t = Date.now() / 1000;
+      // a sample house: our APs on 1 / 44 / 149, neighbours loud by the kitchen, a stray ch 3 network near the garden
+      const base = [['Sonor-Demo', 1, 20, -48], ['Sonor-Demo', 44, 80, -55], ['Sonor-Demo', 149, 80, -62], ['BT-7HX2Q', 6, 20, -71], ['VM8812734', 11, 40, -76], ['SKY4F2A1', 6, 20, -80], ['EE-Hub-9K', 36, 80, -78], ['DIRECT-HP-Laser', 6, 20, -66], ['Ring-Setup', 3, 20, -74], ['TALKTALK51C', 100, 80, -84]];
+      const place = { agent: [0, 0, 0, 0], '192.168.1.77': [-6, 0, -4, 2], '192.168.1.79': [-14, -6, -18, -4], '192.168.1.80': [-4, 14, 10, 6], '192.168.1.82': [-18, -10, -2, 12] };
+      const one = (id, five) => base.filter((b) => five || b[1] <= 14).map(([ssid, ch, width, rssi], i) => { const o = place[id] || [0, 0, 0, 0]; const adj = ssid === 'Sonor-Demo' ? o[0] : ch === 6 ? o[1] : ssid === 'Ring-Setup' ? o[3] : o[2];
+        return { ssid, bssid: '02:5E:' + (10 + i) + ':00:00:0' + (i % 10), ch, width, band: ch > 14 ? '5 GHz' : '2.4 GHz', rssi: Math.round(rssi + adj + Math.sin(t / 9 + i) * 3), sec: 'WPA2' }; }).filter((a) => a.rssi > -92);
+      const sources = []; if (data.self !== false) sources.push({ id: 'agent', kind: 'agent', name: 'Demo rig', at: new Date().toISOString(), aps: one('agent', true) });
+      for (const ip of data.ips || []) { const n = (demo.nodes || []).find((x) => x.ip === ip); if (!n || n.online === false) { sources.push({ id: ip, ip, kind: 'node', error: 'The probe did not answer' }); continue; } sources.push({ id: ip, ip, kind: 'node', at: new Date().toISOString(), age_ms: 2100, aps: one(ip, (n.caps || []).includes('wifi-scan-5')) }); }
+      return { at: new Date().toISOString(), sources }; }
+    case 'logger': { await sleep(150); const now = Date.now();
+      // demo: one finished trouble watch from last week, and whatever session the viewer starts here
+      demo.log = demo.log || { cfg: { wifi: true, rf: true, zigbee: true, artnet: true, traffic: true, keepCapture: true, pcapRing: true }, session: { on: false }, past: [{ id: 'demo-watch', name: 'Plas Newydd · lights drop out', mode: 'watch', started: new Date(now - 6 * 864e5).toISOString(), until: new Date(now - 864e5).toISOString(), on: false, bytes: 41e6, lines: 38210 }] };
+      const L = demo.log; const op = data.op || 'get';
+      if (op === 'start') { const days = data.session && data.session.days; L.session = { on: true, id: 'demo-' + now, name: (data.session && data.session.name) || 'Demo site', mode: days ? 'watch' : 'site', started: new Date(now).toISOString(), until: new Date(now + (days ? days * 864e5 : 12 * 36e5)).toISOString(), bytes: 0, lines: 0 }; }
+      if (op === 'stop') L.session = { ...L.session, on: false, until: new Date(now).toISOString() };
+      if (op === 'set') Object.assign(L.cfg, data.cfg || {});
+      if (L.session.on) { const m = Math.max(1, (now - Date.parse(L.session.started)) / 6e4); L.session.lines = Math.round(m * 9); L.session.bytes = L.session.lines * 260; }
+      const sessions = [...(L.session.id ? [L.session] : []), ...L.past];
+      const alerts = [{ t: new Date(now - 26 * 36e5).toISOString(), tool: 'wifi', level: 'warn', text: 'Channel 6 rose 9 dB at Kitchen (BT-7HX2Q moved to 6)' }, { t: new Date(now - 5 * 36e5).toISOString(), tool: 'artnet', level: 'bad', text: 'Node DMX-4 (192.168.1.120) stopped answering' }, { t: new Date(now - 4.6 * 36e5).toISOString(), tool: 'artnet', level: 'info', text: 'Node DMX-4 is back' }, { t: new Date(now - 40 * 6e4).toISOString(), tool: 'rf', level: 'warn', text: '433 MHz floor up 8 dB at Master bedroom' }];
+      return { cfg: L.cfg, session: L.session.on ? L.session : null, counts: {}, lastAt: new Date(now).toISOString(), ring: L.session.on && L.cfg.pcapRing, sessions, alerts }; }
+    case 'logQuery': { await sleep(300); const from = data.from || Date.now() - 864e5, to = data.to || Date.now(); const lines = []; const iso = (t) => new Date(t).toISOString();
+      const rnd = (i) => (Math.sin(i * 12.9898) * 43758.5453) % 1; const r = (i) => Math.abs(rnd(i));
+      const step = Math.max(6e4, Math.round((to - from) / 900));   // about 900 minute lines whatever the window
+      for (let t = from - (from % step) + step, i = 0; t < to; t += step, i++) {
+        const busy = Math.round(new Date(t).getHours() >= 17 && new Date(t).getHours() <= 22 ? 18 + r(i) * 14 : 6 + r(i) * 8);
+        lines.push({ t: iso(t), app: 'net-scanner', kind: 'minute', tool: 'wifi', src: ['Rig', 'Kitchen', 'Garden room'][i % 3], n: 9 + Math.round(r(i) * 4), best24: busy > 24 ? 11 : 1, b24: [busy, 0, 0, 0, 0, busy, 0, 0, 0, 0, Math.round(busy / 2)], g24: [busy > 28 ? 2 : busy > 10 ? 1 : 0, 0, 0, 0, 0, busy > 20 ? 2 : 1, 0, 0, 0, 0, 0] });
+        if (i % 4 === 0) lines.push({ t: iso(t + 1e4), app: 'net-scanner', kind: 'minute', tool: 'rf', src: 'Master bedroom', mhz: 433.92, floor: -104 + Math.round(r(i + 3) * 4), peak: -60 - Math.round(r(i + 5) * 14), bursts: Math.round(r(i + 7) * 6) });
+        if (i % 6 === 0) lines.push({ t: iso(t + 2e4), app: 'net-scanner', kind: 'minute', tool: 'artnet', src: 'Rig', nodes: 4, dmx: 6 });
+        if (i % 3 === 0) lines.push({ t: iso(t + 3e4), app: 'net-scanner', kind: 'minute', tool: 'traffic', src: 'Rig', pkts: 4000 + Math.round(r(i) * 9000), bcastPs: Math.round(r(i + 1) * 40), mcastPs: Math.round(r(i + 2) * 120), top: { mDNS: 1, SSDP: 1, 'Art-Net': 1 } });
+        if (i % 15 === 0) lines.push({ t: iso(t + 4e4), app: 'net-scanner', kind: 'minute', tool: 'zigbee', src: 'Kitchen', energy: [[11, -82], [15, -88], [20, -67], [25, -79]] });
+      }
+      const st = (await demoApi('logger', {})); for (const a of st.alerts) if (Date.parse(a.t) >= from) lines.push({ ...a, app: 'net-scanner', kind: 'alert', src: a.tool === 'rf' ? 'Master bedroom' : a.tool === 'wifi' ? 'Kitchen' : 'Rig' });
+      lines.push({ t: iso(Math.max(from, to - 9 * 36e5)), app: 'net-scanner', kind: 'source', tool: 'nodes', src: 'Zigbee probe C', state: 'offline', why: 'battery flat' });
+      let out = lines.filter((l) => (!data.tool || l.tool === data.tool) && (!data.kind || String(data.kind).split(',').includes(l.kind)) && (!data.q || JSON.stringify(l).toLowerCase().includes(String(data.q).toLowerCase()))).sort((a, b) => Date.parse(a.t) - Date.parse(b.t));
+      const total = out.length; out = out.slice(-(data.limit || 3000)); return { lines: out, total }; }
     case 'node': { await sleep(200); const n = (demo.nodes || []).find((x) => x.ip === data.ip); if (!n) throw new Error('No node at ' + data.ip); if (data.op === 'spot') n.spot = data.spot; return { ...n, ok: true }; }
     case 'zbProbe': {
       const op = data && data.op; const far = { '192.168.1.80': 14, '192.168.1.78': 0 }[data && data.ip] || 0; demo.zb = demo.zb || { ch: 25, frames: 0 };
@@ -619,6 +696,7 @@ async function refresh() {
     $('#targets').placeholder = `Subnets to scan (blank = ${agent.interfaces.map((i) => i.cidr).join(', ') || 'none'})`;
     if (window.SonorHeader) SonorHeader.updateDbStatus('live', { local: 'Agent', bridge: 'Agent link', app: 'Tablet', demo: 'Demo data' }[mode]);
     renderScanState();
+    logRefresh();
     if (!netInfo) loadInfo(false);
     const { scans } = await api('scans');
     $('#scanPick').innerHTML = scans.length ? scans.map((s) => `<option value="${esc(s.id)}">${esc(new Date(s.startedAt).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))} · ${s.count} devices${s.label ? ' · ' + esc(s.label) : ''}</option>`).join('') : '<option value="">No scans yet</option>';
@@ -1001,7 +1079,7 @@ async function uploadScan() {
     } catch (e) { if (e.message === 'cancelled') throw e; throw new Error(mode === 'app' ? (AUTH.user() ? 'Could not reach Sonor: check the tablet is online' : 'Press Sign in at the top first') : 'Uploading needs a Sonor sign-in: open the scanner from apps.sonor.co.uk'); }
     const row = { project_id: project ? project.id : null, status: project ? 'pending' : 'unassigned', matched_by: matched, ssid: ssid || null, scanned_at: scanData.startedAt,
       agent: mode === 'app' ? 'tablet' : `agent:${(agent && agent.hostname) || ''}`, app_version: APP_VERSION, subnets: scanData.targets || [], device_count: scanData.devices.length,
-      label: scanData.label || null, netinfo: (info.at || survey || walk.length || rfLog.length || an.nodes.length || zbUsed().length || zbLog.length || WifiMap.exportPlan()) ? { ...info, speed: info.speed || scanData.speed || null, wifiSurvey: survey ? { at: survey.at, networks: survey.networks.slice(0, 80), analysis: { counts: survey.analysis.counts, recommend: survey.analysis.recommend, flags: survey.analysis.flags } } : null, walk: walk.length ? walk : null, rf: rfLog.length ? rfLog : null, artnet: (an.nodes.length || an.sacn.length) ? { at: an.at, nodes: an.nodes.map(({ lost, missed, ...n }) => n), dmx: an.dmx, sacn: an.sacn, faults: ArtnetFaults.flags({ nodes: an.nodes, dmx: an.dmx, sacn: an.sacn, localCidrs: anLocals }).map((f) => f.id) } : null, zigbee: (zbUsed().length || zbLog.length || zbFoundList.length) ? { found: zbFoundList, energy: zbEnergy, tests: zbLog, meshes: zbUsed().map(({ k, name, ch }) => ({ system: k, name, channel: ch })), load: survey ? zigbeeLoad(survey.networks).map((z) => ({ ch: z.ch, dbm: z.dbm })) : null } : null, wifiPlan: WifiMap.exportPlan() } : null, devices: scanData.devices.map(compactDevice),
+      label: scanData.label || null, netinfo: (info.at || survey || walk.length || rfLog.length || an.nodes.length || zbUsed().length || zbLog.length || Object.keys(wmonHist).length || WifiMap.exportPlan()) ? { ...info, speed: info.speed || scanData.speed || null, wifiSurvey: survey ? { at: survey.at, networks: survey.networks.slice(0, 80), analysis: { counts: survey.analysis.counts, recommend: survey.analysis.recommend, flags: survey.analysis.flags } } : null, walk: walk.length ? walk : null, rf: rfLog.length ? rfLog : null, artnet: (an.nodes.length || an.sacn.length) ? { at: an.at, nodes: an.nodes.map(({ lost, missed, ...n }) => n), dmx: an.dmx, sacn: an.sacn, faults: ArtnetFaults.flags({ nodes: an.nodes, dmx: an.dmx, sacn: an.sacn, localCidrs: anLocals }).map((f) => f.id) } : null, zigbee: (zbUsed().length || zbLog.length || zbFoundList.length) ? { found: zbFoundList, energy: zbEnergy, tests: zbLog, meshes: zbUsed().map(({ k, name, ch }) => ({ system: k, name, channel: ch })), load: survey ? zigbeeLoad(survey.networks).map((z) => ({ ch: z.ch, dbm: z.dbm })) : null } : null, wifiMon: wmonSummary(), wifiPlan: WifiMap.exportPlan() } : null, devices: scanData.devices.map(compactDevice),
       check_result: plan && plan.projectId === (project && project.id) ? (() => { const c = compare(); return { ok: c.rows.filter((r) => r.status[0] === 'ok').length, warn: c.rows.filter((r) => r.status[0] === 'warn').length, missing: c.rows.filter((r) => r.status[0] === 'bad').length, extra: c.extra.length }; })() : null };
     await rest('/net_scans', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(row) });
     toast(project ? `Uploaded to ${project.name}${matched === 'ssid' ? ` (matched by Wi-Fi "${ssid}")` : ''}` : 'Uploaded. The office will attach it to a project.');
@@ -1407,7 +1485,8 @@ function renderZbMeterCh() {
 const NODE_COL = ['#4bb9d3', '#e3a72f', '#2fbf71', '#c86bd6', '#e5784d', '#8fa3ff'];
 let siteNodes = store.get('siteNodes', []); let nodePick = store.get('nodePick', {}); let nodeExtra = store.get('nodeExtra', []); let nodesTimer = null, nodesBusy = false;
 const nodeKey = (n) => n.id || n.ip;
-const nodesOf = (k) => siteNodes.filter((n) => n.kind === (k === 'zb' ? 'zigbee' : k));
+const hasCap = (n, c) => (n.caps || []).includes(c);
+const nodesOf = (k) => siteNodes.filter((n) => k === 'wifi' ? hasCap(n, 'wifi-scan') || hasCap(n, 'wifi-scan-5') : k === 'zb' ? n.kind === 'zigbee' || hasCap(n, 'zb-scan') : n.kind === k || (k === 'rf' && hasCap(n, 'rf433-rssi')));
 const isPicked = (k, n) => (nodePick[k] ? nodePick[k].includes(nodeKey(n)) : true);
 const pickedNodes = (k) => nodesOf(k).filter((n) => n.online !== false && isPicked(k, n));
 const nodeCol = (n) => NODE_COL[Math.max(0, siteNodes.findIndex((x) => x.ip === n.ip)) % NODE_COL.length];
@@ -1415,7 +1494,7 @@ const nodeLabel = (n) => n.spot || n.name || n.ip;
 async function loadNodes(fresh) {
   if (nodesBusy) return; nodesBusy = true;
   try { const r = await api('nodes', { fresh: fresh ? 1 : 0, extra: nodeExtra }); siteNodes = r.nodes || []; store.set('siteNodes', siteNodes); } catch { /* keep the last list */ }
-  nodesBusy = false; renderNodes('rf'); renderNodes('zb');
+  nodesBusy = false; renderNodes('rf'); renderNodes('zb'); renderNodes('wifi');
 }
 function nodesWatch(on) { clearInterval(nodesTimer); nodesTimer = null; if (on) nodesTimer = setInterval(() => { if (!document.hidden) loadNodes(false); }, 20000); }
 function renderNodes(k) {
@@ -1423,7 +1502,7 @@ function renderNodes(k) {
   const opt = (v, cur) => `<option${v === cur ? ' selected' : ''}>${esc(v)}</option>`;
   el.innerHTML = list.map((n) => { const off = n.online === false; const st = off ? (n.legacy ? 'off, or old firmware' : 'offline') : 'online'; const spots = [...new Set([...(n.spot ? [n.spot] : []), ...rooms])];
     return `<div class="ncard${off ? ' off' : ''}" style="--c:${nodeCol(n)}"><label class="nhead"><input type="checkbox" data-npick="${esc(nodeKey(n))}"${isPicked(k, n) && !off ? ' checked' : ''}${off ? ' disabled' : ''}> <b>${esc(n.spot || n.name || SonorWireless.NODE.kinds[n.kind] || 'Probe')}</b></label>
-      <div class="ln">${esc(n.spot ? (n.name || '') : SonorWireless.NODE.kinds[n.kind] || '')} <span class="mono">${esc(n.ip)}</span> · ${n.battery > 0 ? (n.battery / 1000).toFixed(2) + ' V' : n.battery === -1 ? 'USB' : '—'}${n.wifiRssi ? ' · Wi-Fi ' + n.wifiRssi + ' dBm' : ''} · <span class="pill ${off ? 'bad' : 'ok'}">${st}</span>${n.v ? ' · v' + esc(n.v) : ''}</div>
+      <div class="ln">${esc(n.spot ? (n.name || '') : SonorWireless.NODE.kinds[n.kind] || '')} <span class="mono">${esc(n.ip)}</span> · ${n.battery > 0 ? `${SonorWireless.battPct(n.battery)}% (~${SonorWireless.battHours(n.battery, hasCap(n, 'sleep') ? 'sampling' : 'probe')} h left)` : n.battery === -1 ? 'USB' : '—'}${n.wifiRssi ? ' · Wi-Fi ' + n.wifiRssi + ' dBm' : ''} · <span class="pill ${off ? 'bad' : 'ok'}">${st}</span>${n.v ? ' · v' + esc(n.v) : ''}</div>
       <div class="row" style="margin-top:6px"><select data-nspot="${esc(n.ip)}" style="flex:1;min-width:0"${off ? ' disabled' : ''}><option value="">Where is it?</option><optgroup label="${WifiMap.hasPlan() ? 'Rooms on the plan' : 'Rooms'}">${spots.map((r) => opt(r, n.spot)).join('')}</optgroup>${devs.length ? `<optgroup label="Next to">${devs.map((r) => opt(r, n.spot)).join('')}</optgroup>` : ''}<option value="__type">Type a place…</option></select><button class="btn-sm" data-nid="${esc(n.ip)}"${off ? ' disabled' : ''} title="Blink its light for 5 s">Identify</button></div>
       <input data-nspottxt="${esc(n.ip)}" placeholder="Where is it? (Enter to save)" hidden style="margin-top:6px;width:100%"></div>`; }).join('')
     + `<div class="ncard add"><b>${list.length ? 'Another probe?' : 'No probe found yet'}</b><div class="ln">Switch it on: it joins the site Wi-Fi (or the rig hotspot) and appears here by itself within 20 s.</div><div class="row" style="margin-top:6px"><button class="btn-sm" data-nfresh>Look now</button><input data-nadd placeholder="or its IP, Enter" class="mono" style="flex:1;min-width:0"></div></div>`;
@@ -1435,6 +1514,140 @@ function renderNodes(k) {
   el.querySelector('[data-nfresh]').onclick = () => loadNodes(true);
   el.querySelector('[data-nadd]').onkeydown = (e) => { const v = e.target.value.trim(); if (e.key !== 'Enter') return; if (!/^\d+\.\d+\.\d+\.\d+$/.test(v)) return toast('Type an address like 192.168.1.77', true); nodeExtra = [...new Set([...nodeExtra, v])]; store.set('nodeExtra', nodeExtra); loadNodes(true); };
   if (k === 'zb') $('#zbProbeState').textContent = pickedNodes('zb').length ? `${pickedNodes('zb').length} probe${pickedNodes('zb').length > 1 ? 's' : ''} in use` : '';
+}
+
+// ── Live Wi-Fi channel monitor (v1.8.0, Bryn: "wifi live monitor of channels … multi node … monitor the whole environment") ──
+// Each source (this agent + every picked node with caps wifi-scan) is sampled every 8 s; SonorWireless.wifiChannelLoad grades each channel.
+let wmonLog = []; const wmonAdvice = {};   // interference log (sp.log): a channel jumping 6 dB over that place's baseline, or airtime over 30 %
+let wmonTimer = null, wmonBusy = false, wmonHist = {}, wmonSel = null, wmonBand = store.get('wmonBand', 'b24'), wmonView = 'now';
+const wmonNode = (h) => (h.src.ip ? siteNodes.find((n) => n.ip === h.src.ip) : null);
+const wmonLabel = (h) => (h.src.kind === 'agent' ? `This rig (${h.src.name || 'agent'})` : wmonNode(h) ? nodeLabel(wmonNode(h)) : h.src.ip);
+const wmonCol = (h) => (h.src.kind === 'agent' ? '#9aa3ad' : wmonNode(h) ? nodeCol(wmonNode(h)) : '#888');
+const wmonChans = () => (wmonBand === 'b24' ? SonorWireless.CH24 : SonorWireless.CH5);
+function wmonVal(h, ch) { const now = Date.now(); const sm = wmonView === 'worst' ? h.samples.filter((x) => now - x.t < 600000) : h.samples.slice(-1);
+  if (!sm.length) return null; const v = sm.map((x) => (x.load[wmonBand] || []).find((c) => c.ch === ch) || { lvl: 0, grade: 0, co: 0 });
+  return { lvl: Math.max(...v.map((x) => x.lvl)), grade: Math.max(...v.map((x) => x.grade || 0)), co: Math.max(...v.map((x) => x.co || 0)), top: Math.max(-200, ...v.map((x) => (x.top == null ? -200 : x.top))) }; }
+const wmonGradeCol = (g, lvl) => (g == null ? 'transparent' : g === 2 ? 'hsl(4, 68%, 46%)' : g === 1 ? 'hsl(38, 80%, 42%)' : lvl ? 'rgba(47,191,113,.38)' : 'rgba(47,191,113,.14)');   // wifi.mon.grade
+const wmonStat = (h, ch) => { const st = h.samples.length && (h.samples[h.samples.length - 1].stats || []).find((x) => x.ch === ch); return st ? ` · airtime ${Math.round(st.airtime_pct)} %${st.noise != null ? ' · noise ' + st.noise + ' dBm' : ''}` : ''; };
+function wmonStop() { clearInterval(wmonTimer); wmonTimer = null; if ($('#wmonGo')) $('#wmonGo').textContent = 'Start'; }
+function wmonStart() { if (wmonTimer) return wmonStop(); wmonTick(); wmonTimer = setInterval(() => { if (!document.hidden) wmonTick(); }, 8000); $('#wmonGo').textContent = 'Stop'; }
+async function wmonTick() {
+  if (wmonBusy) return; wmonBusy = true;
+  try { const ips = pickedNodes('wifi').map((n) => n.ip); const self = $('#wmonSelf').checked; if (!ips.length && !self) { toast('Tick a node, or this rig\'s own Wi-Fi', true); wmonStop(); return; }
+    const r = await api('wifiMon', { ips, self });
+    for (const src of r.sources || []) { const h = wmonHist[src.id] = wmonHist[src.id] || { src, samples: [] }; h.src = { ...h.src, ...src }; if (src.error) { h.err = src.error; continue; } h.err = null;
+      const mine = ourSsids(); h.keep = h.keep || {}; const theirs = SonorWireless.smoothAps(h.keep, (src.aps || []).filter((a) => !mine.has(a.ssid)));   // wifi.mon.smoothing   // our own APs are the plan, not the interference
+      const sm = { t: Date.now(), load: SonorWireless.wifiChannelLoad(theirs), n: (src.aps || []).length, ours: (src.aps || []).filter((a) => mine.has(a.ssid)), aps: theirs, stats: src.stats || null };
+      h.samples.push(sm); if (h.samples.length > 90) h.samples.shift(); wmonEvents(h, sm); }
+    if (!wmonSel || !wmonHist[wmonSel]) wmonSel = Object.keys(wmonHist)[0] || null; renderWmon();
+  } catch (e) { toast(e.message, true); wmonStop(); }
+  wmonBusy = false;
+}
+function wmonEvents(h, sm) {
+  if (!h.base) { if (h.samples.length < 3) return; const med = (arr) => arr.slice().sort((a, b) => a - b)[1];   // baseline = median of the first 3 samples
+    h.base = {}; for (const band of ['b24', 'b5']) for (const c of sm.load[band]) h.base[c.ch] = med(h.samples.slice(0, 3).map((x) => x.load[band].find((y) => y.ch === c.ch).lvl)); return; }
+  const add = (ch, what, lvl) => { const k = `${h.src.id}|${ch}`; const last = wmonLog.find((e) => e.k === k); if (last && sm.t - last.t < 300000) return;
+    wmonLog.unshift({ k, t: sm.t, place: wmonLabel(h), ch, what, lvl }); if (wmonLog.length > 200) wmonLog.pop(); };
+  for (const band of ['b24', 'b5']) for (const c of sm.load[band]) { const b = h.base[c.ch] || 0; if (c.lvl >= SonorWireless.LOAD_LEVELS.busy && c.lvl >= b + 6) add(c.ch, `rose ${c.lvl - b} dB over this room's baseline (${b} → ${c.lvl})`, c.lvl); }
+  for (const st of sm.stats || []) if (st.airtime_pct > 30) add(st.ch, `airtime ${Math.round(st.airtime_pct)} %${st.noise != null ? ', noise ' + st.noise + ' dBm' : ''}`, null);
+}
+function wmonSummary() {   // for the scan upload: worst level per channel per place over the session
+  const rows = Object.values(wmonHist).filter((h) => h.samples.length); if (!rows.length) return null;
+  const pick = SonorWireless.sitePick(rows.map((h) => h.samples[h.samples.length - 1].load));
+  return { at: new Date().toISOString(), log: wmonLog.slice(0, 50).map(({ k, ...e }) => e), pick: { b24: pick.b24[0], b5: pick.b5[0] }, places: rows.map((h) => ({ place: wmonLabel(h), kind: h.src.kind, ip: h.src.ip || null, samples: h.samples.length,
+    b24: SonorWireless.CH24.map((ch) => ({ ch, lvl: Math.max(...h.samples.map((x) => x.load.b24.find((c) => c.ch === ch).lvl)) })), b5: SonorWireless.CH5.map((ch) => ({ ch, lvl: Math.max(...h.samples.map((x) => x.load.b5.find((c) => c.ch === ch).lvl)) })).filter((c) => c.lvl) })) };
+}
+function renderWmon() {
+  const rows = Object.values(wmonHist); const chans = wmonChans(); const L = SonorWireless.LOAD_LEVELS; const live = rows.filter((h) => h.samples.length && !h.err);
+  const mineNow = [...ourSsids()]; $('#wmonSum').textContent = rows.length ? `${live.length} place${live.length === 1 ? '' : 's'} listening · ${live.reduce((a, h) => a + h.samples[h.samples.length - 1].n, 0)} networks heard${mineNow.length ? ' · our ' + mineNow.join(', ') + ' left out: the grid is the neighbours' : ''}${wmonTimer ? ' · every 8 s' : ''}` : '';
+  $('#wmonGrid').innerHTML = rows.length ? `<tr><th></th>${chans.map((c) => `<th class="${[1, 6, 11].includes(c) && wmonBand === 'b24' ? 'ns' : SonorWireless.isDfs(c) ? 'dfs' : ''}" title="${SonorWireless.isDfs(c) ? 'DFS: radar check, can move' : ''}">${c}</th>`).join('')}</tr>`
+    + rows.map((h) => `<tr data-wsel="${esc(h.src.id)}" class="${h.src.id === wmonSel ? 'sel' : ''}"><td class="pl" style="--c:${wmonCol(h)}"><b>${esc(wmonLabel(h))}</b><br><span class="muted">${h.err ? esc(h.err) : h.samples.length ? h.samples[h.samples.length - 1].n + ' networks' : 'waiting…'}</span></td>${chans.map((c) => { const v = wmonVal(h, c); return `<td class="hc" style="background:${v ? wmonGradeCol(v.grade, v.lvl) : 'transparent'}" title="${esc(wmonLabel(h))} · ch ${c}: ${!v ? '—' : SonorWireless.GRADES[v.grade][0] + ' · ' + v.co + ' network' + (v.co === 1 ? '' : 's') + ' on it at −85 dBm or louder' + (v.top > -200 ? ' · loudest ' + v.top + ' dBm' : '') + ' · level ' + v.lvl}${wmonStat(h, c)}">${v && v.grade ? (v.co || v.lvl) : ''}</td>`; }).join('')}</tr>`).join('') : '';
+  $('#wmonGrid').querySelectorAll('[data-wsel]').forEach((tr) => tr.onclick = () => { wmonSel = tr.dataset.wsel; renderWmon(); });
+  // whole-site pick: the channel whose worst place is quietest (wifi.mon.site_pick)
+  const F = [];
+  if (live.length) {
+    const lastLoads = live.map((h) => h.samples[h.samples.length - 1].load); const pick = SonorWireless.sitePick(lastLoads);
+    const worstAt = (band, ch) => { let best = null; for (const h of live) { const v = (h.samples[h.samples.length - 1].load[band].find((c) => c.ch === ch) || { lvl: 0 }).lvl; if (!best || v > best.v) best = { v, h }; } return best; };
+    const card = (band, p, title) => { const w = worstAt(band, p.ch); const [vt, lv] = SonorWireless.GRADES[p.grade]; return `<div class="gcard ${lv}"><div class="lbl">${title}</div><div class="big">ch ${p.ch}</div><div class="ln">${lv === 'ok' ? 'Clear everywhere' : vt + ' in the worst place'}${w && w.v ? ` · loudest at ${esc(wmonLabel(w.h))} (${w.v})` : ''}${p.dfs ? ' · DFS' : ''}</div></div>`; };
+    $('#wmonRec').innerHTML = card('b24', pick.b24[0], 'Best 2.4 GHz for the whole site') + card('b5', pick.b5[0], 'Best 5 GHz (non-DFS first)') + (pick.b5.find((x) => x.dfs) ? card('b5', [...pick.b5].filter((x) => x.dfs).sort((a, b) => (a.grade - b.grade) || (a.worst - b.worst))[0], 'Quietest DFS channel') : '');
+    for (const h of live) { const ld = h.samples[h.samples.length - 1].load; const ns = [1, 6, 11].map((c) => ld.b24.find((x) => x.ch === c).grade);
+      if (ns.every((v) => v >= 1)) F.push(['warn', `${wmonLabel(h)}: all of 1, 6 and 11 are busy`, 'Put AV, streaming and cameras on 5 GHz here; keep 2.4 GHz for IoT.']);
+      const off = (h.samples[h.samples.length - 1].aps || []).filter((a) => a.ch >= 1 && a.ch <= 13 && ![1, 6, 11].includes(Number(a.ch)) && a.rssi >= -70);
+      if (off.length) F.push(['info', `${wmonLabel(h)}: ${off.length} strong network${off.length > 1 ? 's' : ''} on a 2.4 GHz channel between 1, 6 and 11`, `${[...new Set(off.map((a) => (a.ssid || 'hidden') + ' (ch ' + a.ch + ')'))].slice(0, 4).join(', ')}: these overlap two of the clean channels at once.`]);
+      const hot = ld.b5.filter((c) => c.grade === 2 && !c.dfs); if (hot.length) F.push(['warn', `${wmonLabel(h)}: 5 GHz channel${hot.length > 1 ? 's' : ''} ${hot.map((c) => c.ch).join(', ')} crowded by neighbours`, `Avoid ${hot.length > 1 ? 'them' : 'it'} for the APs that cover this room.`]); }
+    const spread = pick.b24[0]; const w = worstAt('b24', spread.ch); if (live.length > 1 && spread.grade >= 1 && w) F.push(['warn', `No 2.4 GHz channel is clear everywhere`, `Channel ${spread.ch} is the best compromise, but ${wmonLabel(w.h)} still hears level ${w.v}. A node near there tells you which neighbour it is.`]);
+    // wifi.mon.pick: advise moving our own 2.4 / 5 GHz channel only if the pick beats it by a grade or 6 dB at the worst place, held 10 minutes
+    const oursNow = live.flatMap((h) => h.samples[h.samples.length - 1].ours || []); const now = Date.now();
+    for (const band of ['b24', 'b5']) { const cur = [...new Set(oursNow.filter((a) => (band === 'b24') === (Number(a.ch) <= 14)).map((a) => Number(a.ch)))];
+      for (const ch of cur) { const curR = pick[band].find((x) => x.ch === ch); const best = pick[band][0]; const key = band + ch + '>' + (best && best.ch);
+        if (!curR || !best || best.ch === ch || !SonorWireless.betterBy(best, curR)) { delete wmonAdvice[band + ch]; continue; }
+        const a = wmonAdvice[band + ch] = wmonAdvice[band + ch] && wmonAdvice[band + ch].key === key ? wmonAdvice[band + ch] : { key, since: now }; const held = Math.round((now - a.since) / 60000);
+        F.push([held >= 10 ? 'warn' : 'info', `Our ${band === 'b24' ? '2.4' : '5'} GHz on channel ${ch}: channel ${best.ch} is better across the site`, `Worst place goes from ${SonorWireless.GRADES[curR.grade][0].toLowerCase()} (level ${curR.worst}) to ${SonorWireless.GRADES[best.grade][0].toLowerCase()} (level ${best.worst}). ${held >= 10 ? 'Held for 10 minutes: worth changing in the controller.' : `Watching: advice firms up after 10 minutes (${held} so far).`}`]); } }
+  } else $('#wmonRec').innerHTML = '';
+  for (const h of rows.filter((x) => x.err)) F.push(['bad', `${wmonLabel(h)}: no answer`, h.err]);
+  $('#wmonFlags').innerHTML = F.map(([lv, t, x]) => `<div class="gflag ${lv}"><b>${esc(t)}.</b> ${esc(x)}</div>`).join('');
+  $('#wmonLog').innerHTML = wmonLog.length ? `<div class="lbl">Interference log (${wmonLog.length})</div>` + wmonLog.slice(0, 30).map((e) => `<div class="small"><span class="mono muted">${new Date(e.t).toLocaleTimeString()}</span> · <b>${esc(e.place)}</b> · ch ${e.ch}: ${esc(e.what)}</div>`).join('') : '<div class="muted small">Interference log: a channel that jumps 6 dB over its room\'s baseline, or a sniffing node reporting more than 30 % airtime, is logged here with the time.</div>';
+  drawWmonFall();
+}
+function drawWmonFall() {   // waterfall for the picked place: channels across, time down (newest on top)
+  const cv = $('#wmonFall'); if (!cv) return; const g = cv.getContext('2d'); const W = cv.width, H = cv.height; g.clearRect(0, 0, W, H);
+  const h = wmonHist[wmonSel]; $('#wmonFallLbl').textContent = h ? `Over time · ${wmonLabel(h)} · ${wmonBand === 'b24' ? '2.4' : '5'} GHz (newest at the top; tap a place above to switch)` : 'Over time';
+  if (!h || !h.samples.length) return; const chans = wmonChans(); const cw = (W - 40) / chans.length; const rows = h.samples.slice().reverse(); const rh = (H - 18) / Math.max(12, rows.length);
+  g.font = '10px DM Mono, monospace'; g.fillStyle = '#8E8E93'; chans.forEach((c, i) => { if (chans.length < 16 || i % 2 === 0) g.fillText(String(c), 40 + i * cw + 2, H - 4); });
+  rows.forEach((sm, r) => chans.forEach((c, i) => { const e = sm.load[wmonBand].find((x) => x.ch === c) || { lvl: 0, grade: 0 }; g.fillStyle = e.lvl ? wmonGradeCol(e.grade, e.lvl) : 'rgba(128,128,128,.08)'; g.fillRect(40 + i * cw, r * rh, cw - 1, rh - 0.5); }));
+  g.fillStyle = '#8E8E93'; g.fillText('now', 4, 10); g.fillText(Math.round((Date.now() - h.samples[0].t) / 60000) + ' min', 4, Math.min(H - 20, rows.length * rh));
+}
+
+// ── Log tab (v1.8.0): the shared site log on the agent (sonor-sitelog.js session model; lib/logger.js samples every tool) ──
+const LOG_TOOLS = [['wifi', 'Wi-Fi in every room'], ['rf', 'RF probes'], ['zigbee', 'Zigbee probes'], ['artnet', 'Art-Net'], ['traffic', 'Traffic'], ['keepCapture', 'Keep a capture running'], ['pcapRing', 'Rolling .pcap for Wireshark']];
+const LOG_COL = { wifi: '#4bb9d3', rf: '#e3a72f', zigbee: '#2fbf71', artnet: '#c86bd6', traffic: '#e5784d', nodes: '#8fa3ff', log: '#8E8E93' };
+let logInfo = null, logLines = [], logTimer = null;
+const logWhen = (t) => { const d = new Date(t); return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); };
+const fmtBytes = (b) => (b > 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b > 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.round((b || 0) / 1e3) + ' kB');
+async function logRefresh() {
+  try { logInfo = await api('logger', {}); } catch (e) { logInfo = { error: e.message }; }
+  renderLogState();
+}
+function renderLogPill() { const s = logInfo && logInfo.session; const p = $('#logPill'); if (!p) return; p.hidden = !(s && s.on);
+  if (s && s.on) p.textContent = `● Logging · ${s.name}${s.until ? ' · until ' + logWhen(s.until) : ''}`;
+  const n = (logInfo && logInfo.alerts || []).filter((a) => a.level !== 'info').length; $('#logCount').textContent = n; $('#logCount').classList.toggle('zero', !n); }
+function renderLogState() {
+  renderLogPill(); const el = $('#logState'); if (!el) return;
+  if (!logInfo || logInfo.error) { el.innerHTML = `<div class="gflag info">${esc((logInfo && logInfo.error) || 'Not connected to an agent')}</div>`; $('#logStartRow').hidden = true; $('#logTools').innerHTML = ''; return; }
+  const s = logInfo.session || {}; $('#logStartRow').hidden = !!s.on;
+  el.innerHTML = s.on ? `<div class="gcard bad" style="--c:var(--bad)"><div class="lbl">Recording · ${s.mode === 'watch' ? 'Trouble watch' : 'Site visit'}</div><div class="big" style="font-size:20px">${esc(s.name)}</div><div class="ln">Since ${logWhen(s.started)} · stops ${logWhen(s.until)} · ${fmtBytes(s.bytes)} · ${(s.lines || 0).toLocaleString()} lines${logInfo.ring ? ' · .pcap ring running' : ''}</div><div class="row" style="margin-top:8px"><button id="logStop">Stop logging</button></div></div>`
+    : `<div class="muted small">Not logging. ${(logInfo.sessions || []).length ? 'Earlier sessions are below under Look back.' : ''}</div>`;
+  if ($('#logStop')) $('#logStop').onclick = async () => { try { logInfo = await api('logger', { op: 'stop' }); renderLogState(); toast('Logging stopped'); } catch (e) { toast(e.message, true); } };
+  const cfg = logInfo.cfg || {}; $('#logTools').innerHTML = '<span class="muted">Logs:</span>' + LOG_TOOLS.map(([k, t]) => `<label><input type="checkbox" data-logtool="${k}"${cfg[k] ? ' checked' : ''}> ${t}</label>`).join('');
+  $('#logTools').querySelectorAll('[data-logtool]').forEach((c) => c.onchange = async () => { try { logInfo = await api('logger', { op: 'set', cfg: { [c.dataset.logtool]: c.checked } }); renderLogState(); } catch (e) { toast(e.message, true); } });
+  const al = (logInfo.alerts || []).slice(-8).reverse(); $('#logLive').innerHTML = al.length ? '<div class="lbl">Latest alerts</div>' + al.map((a) => `<div class="gflag ${a.level === 'bad' ? 'bad' : a.level === 'info' ? 'info' : 'warn'}"><span class="mono small muted">${logWhen(a.t)}</span> · <b>${esc(a.tool || '')}</b> ${esc(a.text || '')}</div>`).join('') : '';
+  const sel = $('#logSess'); const cur = sel.value; sel.innerHTML = '<option value="">Every session</option>' + (logInfo.sessions || []).map((x) => `<option value="${esc(x.id)}"${x.id === cur ? ' selected' : ''}>${esc(x.name || x.id)} · ${logWhen(x.started)}${x.on ? ' (recording)' : ''} · ${fmtBytes(x.bytes)}</option>`).join('');
+  const dl = mode === 'local' ? (logInfo.sessions || []).slice(0, 6).map((x) => `<a class="btn-sm" href="/api/log/download?session=${encodeURIComponent(x.id)}&gz=1">${esc(x.name || x.id)} .jsonl.gz</a>`).join('') : '';
+  $('#logDl').innerHTML = dl ? '<span class="muted">Download:</span>' + dl + (logInfo.ring ? ' <span class="muted">· .pcap ring files are in scans/pcap/ring on the rig</span>' : '') : `<span class="muted">${mode === 'demo' ? 'Demo: on the rig each session downloads as one .jsonl file, and the .pcap ring opens in Wireshark.' : 'Downloads: open the Scanner from the rig (http://10.77.0.1:8050).'}</span>`;
+}
+function logText(l) {
+  if (l.text) return l.text; if (l.state) return `${l.state}${l.ssid ? ' · ' + l.ssid : ''}${l.ch ? ' · ch ' + l.ch : ''}${l.battery > 0 ? ' · battery ' + SonorWireless.battPct(l.battery) + '%' : ''}${l.why ? ' · ' + l.why : ''}`;
+  if (l.tool === 'wifi' && l.b24) { const g = l.g24 || []; const busy = [1, 6, 11].filter((c) => (g[c - 1] || 0) >= 1); return `${l.n} networks · best 2.4 GHz ch ${l.best24}${busy.length ? ' · busy ' + busy.join(', ') : ''}`; }
+  if (l.tool === 'rf') return `${l.mhz || ''} MHz · floor ${l.floor} dBm · peak ${l.peak} · ${l.bursts ?? '—'} bursts`;
+  if (l.tool === 'zigbee') { const worst = (l.energy || []).slice().sort((a, b) => b[1] - a[1])[0]; return worst ? `loudest ch ${worst[0]} at ${worst[1]} dBm` : 'energy sweep'; }
+  if (l.tool === 'artnet') return `${l.nodes} nodes · ${l.dmx} DMX streams`;
+  if (l.tool === 'traffic') return `${l.pkts} packets · ${l.bcastPs}/s broadcast · ${l.mcastPs}/s multicast · ${Object.keys(l.top || {}).slice(0, 3).join(', ')}`;
+  return JSON.stringify(l).slice(0, 140);
+}
+async function logLoad() {
+  const to = Date.now(); const from = to - Number($('#logRange').value); $('#logSum').textContent = 'Reading…';
+  try { const r = await api('logQuery', { from, to, session: $('#logSess').value || undefined, tool: $('#logTool').value || undefined, kind: $('#logKind').value || undefined, q: $('#logQ').value.trim() || undefined, limit: 3000 }); logLines = r.lines || [];
+    $('#logSum').textContent = `${logLines.length.toLocaleString()} line${logLines.length === 1 ? '' : 's'}${r.total > logLines.length ? ' (newest of ' + r.total.toLocaleString() + ')' : ''}`;
+  } catch (e) { logLines = []; $('#logSum').textContent = e.message; }
+  drawLogGraph(from, to);
+  $('#logTable').innerHTML = logLines.length ? '<tr><th>When</th><th>Tool</th><th>Where</th><th>What</th></tr>' + logLines.slice().reverse().slice(0, 1500).map((l) => `<tr class="${l.kind === 'alert' ? (l.level === 'bad' ? 'bad' : l.level === 'info' ? '' : 'warn') : ''}"><td class="mono small" style="white-space:nowrap">${logWhen(l.t)}</td><td><span class="pill" style="border-color:${LOG_COL[l.tool] || '#888'};color:${LOG_COL[l.tool] || 'inherit'}">${esc(l.tool || l.kind)}</span></td><td>${esc(l.src || '')}${l.ip && l.ip !== l.src ? ` <span class="mono small muted">${esc(l.ip)}</span>` : ''}</td><td>${l.kind === 'alert' ? '<b>' : ''}${esc(logText(l))}${l.kind === 'alert' ? '</b>' : ''}${l.rule ? ` <span class="muted small">(${esc(l.rule)})</span>` : ''}</td></tr>`).join('') : '<tr><td class="muted">Nothing logged in this window.</td></tr>';
+}
+function drawLogGraph(from, to) {   // alerts and changes over the window, one row per tool
+  const cv = $('#logGraph'); if (!cv) return; const g = cv.getContext('2d'); const W = cv.width, H = cv.height; g.clearRect(0, 0, W, H);
+  const tools = Object.keys(LOG_COL); const rh = (H - 20) / tools.length; g.font = '11px DM Mono, monospace';
+  tools.forEach((t, i) => { g.fillStyle = '#8E8E93'; g.fillText(t, 4, 14 + i * rh); g.fillStyle = 'rgba(128,128,128,.12)'; g.fillRect(70, 4 + i * rh, W - 74, rh - 4); });
+  for (const l of logLines) { const i = tools.indexOf(l.tool); if (i < 0) continue; const x = 70 + ((Date.parse(l.t) - from) / (to - from)) * (W - 74); g.fillStyle = l.kind === 'alert' ? (l.level === 'bad' ? '#e5484d' : '#e3a72f') : l.kind === 'source' ? LOG_COL[l.tool] : 'rgba(75,185,211,.25)'; g.fillRect(x, 4 + i * rh, l.kind === 'minute' ? 1 : 3, rh - 4); }
+  g.fillStyle = '#8E8E93'; g.fillText(logWhen(from), 70, H - 4); const e = logWhen(to); g.fillText(e, W - 4 - g.measureText(e).width, H - 4);
 }
 const tileN = (n, big, ln) => `<div class="gcard" style="--c:${nodeCol(n)}"><div class="lbl">${esc(nodeLabel(n))}</div><div class="big">${big}</div><div class="ln">${ln}</div></div>`;
 let zbS = {};   // per probe ip: { last, hist[] }
@@ -1785,12 +1998,13 @@ function renderSchedule() {
 // ── Wiring ────────────────────────────────────────────────
 document.querySelectorAll('.tabs button').forEach((b) => b.onclick = () => {
   document.querySelectorAll('.tabs button').forEach((x) => x.classList.toggle('on', x === b));
-  for (const t of ['devices', 'discovery', 'issues', 'check', 'wifi', 'zigbee', 'rf', 'artnet', 'traffic', 'tools', 'schedule']) $('#tab-' + t).hidden = b.dataset.tab !== t;
+  for (const t of ['devices', 'discovery', 'issues', 'check', 'wifi', 'zigbee', 'rf', 'artnet', 'log', 'traffic', 'tools', 'schedule']) $('#tab-' + t).hidden = b.dataset.tab !== t;
   hideTip(); if (b.dataset.tab !== 'wifi' && wTimer) wStop();
   if (b.dataset.tab === 'check' && $('#projPick').options.length < 2) loadProjects();
   if (b.dataset.tab === 'rf') { renderRf(); loadNodes(false); } else rfStop();
-  nodesWatch(['rf', 'zigbee'].includes(b.dataset.tab));
+  nodesWatch(['rf', 'zigbee', 'wifi'].includes(b.dataset.tab)); if (b.dataset.tab === 'wifi') { loadNodes(false); renderWmon(); }
   if (b.dataset.tab === 'artnet') anAuto(); else anStop();
+  if (b.dataset.tab === 'log') { logRefresh().then(logLoad); clearInterval(logTimer); logTimer = setInterval(() => { if (!document.hidden) logRefresh(); }, 15000); } else { clearInterval(logTimer); logTimer = null; }
   if (b.dataset.tab === 'traffic') { renderTraffic(); trFiles(); if (!tr.on) trStart(); } else if (tr.on) trStop();
   if (b.dataset.tab === 'zigbee') { renderZigbee(); zbAuto(); } else zbStop();
   store.set('tab', b.dataset.tab);
@@ -1815,6 +2029,12 @@ $('#wGo').onclick = () => (wTimer ? wStop() : wStart());
 $('#walkGo').onclick = walkRecord; $('#walkRoom').addEventListener('keydown', (e) => { if (e.key === 'Enter') walkRecord(); });
 $('#walkCsv').onclick = walkCsv; $('#walkSpeed').checked = store.get('walkSpeed', true); $('#walkSpeed').onchange = (e) => store.set('walkSpeed', e.target.checked);
 $('#walkClear').onclick = () => { if (!walk.length || reviewWalk) return; if (!confirm(`Clear all ${walk.length} readings?`)) return; walk = []; store.set('walk', walk); renderWalk(); };
+$('#logStart').onclick = async () => { const [m, d] = $('#logMode').value.split(':'); try { logInfo = await api('logger', { op: 'start', session: { name: $('#logName').value.trim() || (m === 'site' ? 'Site visit' : 'Trouble watch'), mode: m, days: Number(d) || undefined, project_id: activeProject() || null } }); renderLogState(); toast('Logging started on the rig'); } catch (e) { toast(e.message, true); } };
+$('#logLoad').onclick = logLoad; $('#logQ').onkeydown = (e) => { if (e.key === 'Enter') logLoad(); }; ['#logSess', '#logRange', '#logTool', '#logKind'].forEach((k) => $(k).onchange = logLoad);
+$('#wmonGo').onclick = wmonStart;
+$('#wmonBand').querySelectorAll('button').forEach((b) => b.onclick = () => { wmonBand = b.dataset.b; store.set('wmonBand', wmonBand); $('#wmonBand').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); renderWmon(); });
+$('#wmonBand').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x.dataset.b === wmonBand));
+$('#wmonView').querySelectorAll('button').forEach((b) => b.onclick = () => { wmonView = b.dataset.v; $('#wmonView').querySelectorAll('button').forEach((x) => x.classList.toggle('on', x === b)); renderWmon(); });
 $('#survGo').onclick = runSurvey; $('#survMine').onchange = renderSurvey; $('#survQ').oninput = renderSurvey;
 renderZbMeshes(); renderZbMeterCh();
 $('#zbFind').onclick = () => zbFind(false); $('#zbSweep').onclick = zbSweep;
@@ -1860,6 +2080,7 @@ if (!IS_BRIDGE_WINDOW) {
   if (mode !== 'app') reportVersion();
   if (mode !== 'demo' && (qs.get('pid') || qs.get('scan'))) loadProjects().then(openScanFromUrl);   // opened from Network Map, Site or Engineering
   setInterval(() => { if (!document.hidden && agent && !agent.scan.running && mode === 'local') api('state').then((s) => { agent = s; if (s.scan.lastId && scanData && s.scan.lastId !== scanData.id) refresh(); }).catch(() => {}); }, 20000);
+  setInterval(() => { if (!document.hidden && !logTimer) logRefresh(); }, 60000);
 }
 </script>
 </body>

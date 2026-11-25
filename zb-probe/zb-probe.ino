@@ -28,7 +28,7 @@ extern "C" {
 #include "esp_ieee802154.h"
 }
 
-#define VERSION "1.2.0"
+#define VERSION "1.3.0"
 #define PIN_BATT 0             // optional: battery via 2 × 100k divider to GPIO0; reads 0 when not fitted
 #define MAXN 64
 
@@ -158,9 +158,27 @@ unsigned long blinkUntil = 0;
 #define RGB_BUILTIN 8
 #endif
 
+
+// ── Wi-Fi scan (v1.3, sonor-wireless.js NODE cap wifi-scan): GET /aps answers from the last background scan and starts the next,
+// so a request never waits for the ~2 s channel sweep. The site Wi-Fi link pauses for a moment during each sweep.
+String apsJson = "{\"aps\":[]}"; unsigned long apsAt = 0; bool apsBusy = false;
+const char* apsSec(wifi_auth_mode_t m) { switch (m) { case WIFI_AUTH_OPEN: return "Open"; case WIFI_AUTH_WEP: return "WEP"; case WIFI_AUTH_WPA_PSK: return "WPA"; case WIFI_AUTH_WPA2_PSK: case WIFI_AUTH_WPA_WPA2_PSK: return "WPA2"; case WIFI_AUTH_WPA2_ENTERPRISE: return "WPA2-Enterprise"; case WIFI_AUTH_WPA3_PSK: return "WPA3"; case WIFI_AUTH_WPA2_WPA3_PSK: return "WPA2/WPA3"; default: return "?"; } }
+void apsTick() {
+  if (!apsBusy) return; int n = WiFi.scanComplete(); if (n == WIFI_SCAN_RUNNING) return; apsBusy = false; if (n < 0) return;
+  String j = "{\"aps\":["; for (int i = 0; i < n && i < 60; i++) { String s = WiFi.SSID(i); s.replace("\"", "'"); s.replace("\\", "/");
+    j += String(i ? "," : "") + "{\"ssid\":\"" + s + "\",\"bssid\":\"" + WiFi.BSSIDstr(i) + "\",\"ch\":" + WiFi.channel(i) + ",\"rssi\":" + WiFi.RSSI(i) + ",\"sec\":\"" + apsSec(WiFi.encryptionType(i)) + "\"}"; }
+  j += "]}"; apsJson = j; apsAt = millis(); WiFi.scanDelete();
+}
+void onAps() {
+  cors(); if (WiFi.getMode() == WIFI_AP) { http.send(503, "application/json", "{\"error\":\"not on the site Wi-Fi yet (hotspot mode)\"}"); return; }
+  apsTick(); if (!apsBusy && millis() - apsAt > 3000) { WiFi.scanNetworks(true, true, false, 110); apsBusy = true; }
+  String r = "{\"v\":\"" VERSION "\",\"band\":\"2.4 GHz\",\"at\":" + String(apsAt) + ",\"age_ms\":" + String(apsAt ? millis() - apsAt : -1) + "," + apsJson.substring(1);
+  http.send(200, "application/json", r);
+}
+
 void onInfo() {
   cors(); char b[460];
-  snprintf(b, sizeof b, "{\"v\":\"%s\",\"kind\":\"zigbee\",\"board\":\"esp32c6\",\"caps\":[\"zb-scan\",\"zb-energy\",\"zb-meter\"],\"id\":\"%s\",\"name\":\"sonor-zb-%s\",\"spot\":\"%s\",\"battery\":%d,\"ssid\":\"%s\",\"wifiRssi\":%d,\"uptime\":%lu}",
+  snprintf(b, sizeof b, "{\"v\":\"%s\",\"kind\":\"zigbee\",\"board\":\"esp32c6\",\"caps\":[\"zb-scan\",\"zb-energy\",\"zb-meter\",\"wifi-scan\"],\"id\":\"%s\",\"name\":\"sonor-zb-%s\",\"spot\":\"%s\",\"battery\":%d,\"ssid\":\"%s\",\"wifiRssi\":%d,\"uptime\":%lu}",
     VERSION, nodeId().c_str(), nodeId().substring(8).c_str(), prefs.getString("spot", "").c_str(), battery(), WiFi.SSID().c_str(), WiFi.RSSI(), millis() / 1000);
   http.send(200, "application/json", b);
 }
@@ -179,10 +197,10 @@ void setup() {
   esp_ieee802154_set_coordinator(false);
   listenOn(prefs.getUChar("ch", 25));
   String host = "sonor-zb-" + String((uint32_t)ESP.getEfuseMac() & 0xFFFF, HEX);
-  if (MDNS.begin(host.c_str())) { MDNS.addService("sonor-zb", "tcp", 80); MDNS.addServiceTxt("sonor-zb", "tcp", "id", nodeId().c_str()); MDNS.addServiceTxt("sonor-zb", "tcp", "kind", "zigbee"); MDNS.addServiceTxt("sonor-zb", "tcp", "spot", prefs.getString("spot", "").c_str()); MDNS.addService("sonor-node", "tcp", 80); MDNS.addServiceTxt("sonor-node", "tcp", "id", nodeId().c_str()); MDNS.addServiceTxt("sonor-node", "tcp", "kind", "zigbee"); MDNS.addServiceTxt("sonor-node", "tcp", "caps", "zb-scan,zb-energy,zb-meter"); MDNS.addServiceTxt("sonor-node", "tcp", "spot", prefs.getString("spot", "").c_str()); }
+  if (MDNS.begin(host.c_str())) { MDNS.addService("sonor-zb", "tcp", 80); MDNS.addServiceTxt("sonor-zb", "tcp", "id", nodeId().c_str()); MDNS.addServiceTxt("sonor-zb", "tcp", "kind", "zigbee"); MDNS.addServiceTxt("sonor-zb", "tcp", "spot", prefs.getString("spot", "").c_str()); MDNS.addService("sonor-node", "tcp", 80); MDNS.addServiceTxt("sonor-node", "tcp", "id", nodeId().c_str()); MDNS.addServiceTxt("sonor-node", "tcp", "kind", "zigbee"); MDNS.addServiceTxt("sonor-node", "tcp", "caps", "zb-scan,zb-energy,zb-meter,wifi-scan"); MDNS.addServiceTxt("sonor-node", "tcp", "spot", prefs.getString("spot", "").c_str()); }
   http.on("/info", onInfo); http.on("/spot", onSpot); http.on("/identify", onIdentify);
-  http.on("/scan", onScan); http.on("/energy", onEnergy); http.on("/listen", onListen); http.on("/wifi", onWifi); http.on("/", onWifi);
+  http.on("/scan", onScan); http.on("/energy", onEnergy); http.on("/listen", onListen); http.on("/aps", onAps); http.on("/wifi", onWifi); http.on("/", onWifi);
   http.begin();
 }
 
-void loop() { drainRx(); http.handleClient(); blinkTick(); delay(1); }
+void loop() { drainRx(); http.handleClient(); blinkTick(); apsTick(); delay(1); }

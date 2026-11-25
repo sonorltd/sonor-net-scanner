@@ -25,3 +25,8 @@ assert.strictEqual(W.radioOf({ block_code: 'CL-HM-06-NEOSTAT' }, { metadata: { r
 assert.strictEqual(W.radioOf({ block_code: 'CL-HM-06-NEOSTAT' }, { metadata: { radio: { none: true } } }), null);
 assert.strictEqual(W.radioOf({ device_model_id: 'C4-L-KC120' }).roleLabel, 'Repeater');
 console.log('ok  shared wireless module: Zigbee overlap, makers, grades, RF frequency, probe paths, hub guides');
+// v1.4.0 live Wi-Fi channel monitor: spans, load levels, whole-site pick
+{ const l = W.wifiChannelLoad([{ ch: 6, rssi: -50 }, { ch: 1, rssi: -70 }, { ch: 44, rssi: -65, width: 80 }]);
+  assert.deepStrictEqual(W.wifiSpan(6, 20, '2.4 GHz'), [4, 5, 6, 7, 8]); assert.deepStrictEqual(W.wifiSpan(157, 80), [149, 153, 157, 161]);
+  assert.strictEqual(l.b24.find((c) => c.ch === 6).lvl, 45); assert.strictEqual(l.b5.find((c) => c.ch === 44).lvl, 30); assert.strictEqual(W.loadVerdict(45)[0], 'Crowded');
+  assert.strictEqual(W.sitePick([l]).b24[0].ch, 11); assert.strictEqual(W.probePath('rf', { op: 'aps' }).path, 'aps'); console.log('ok  wifi channel monitor maths'); }
