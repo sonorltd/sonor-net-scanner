@@ -1,4 +1,4 @@
-# Sonor Network Scanner · v1.8.0
+# Sonor Network Scanner · v1.8.1
 
 A commissioning scanner for AV / Control4 sites. It finds every device on the network and says what it is in AV terms (make, model, firmware, serial where the device publishes it), checks the site against the project's plan in the Network Map app, and prints an as-found IP schedule.
 
@@ -71,6 +71,10 @@ Not done yet: hosting the page at apps.sonor.co.uk (needs the `sonorltd/sonor-ne
 - **Check against project** shows the project's uploaded scans (one master table, filtered per project) and the office's Unassigned
   list (attach to a project). **Review** opens an uploaded scan here; Fill MACs / Mark reviewed calls `net_scan_apply`, which writes
   the revision note into Network Map's history (`sonor_revisions`, app `network-map`: who scanned, who reviewed, what changed).
+
+## v1.8.1 (2026-11-25): the shared project selector
+- The Sonor project bar (SonorProjectBar, the same one every app shows) sits under the header on every tab. Projects with a Network Map plan are marked "network plan"; picking one loads its plan for the Check tab, picking one without a plan says so. The bar follows the project picked in any other Sonor app.
+- On the offline site rig (no internet), the plain plan picker on the Check tab takes over as before.
 
 ## v1.8.0 (2026-11-25): live Wi-Fi channel monitor from every node
 - Wi-Fi tab ▸ Live channel monitor: this rig's (or tablet's) own radio plus every Sonor node with cap `wifi-scan` sample every 8 s, each in its own place. Grid = channel load per place (neighbours only: our SSIDs are left out), Now / Worst 10 min, 2.4 / 5 GHz, a waterfall per place, and the whole-site pick (the channel whose worst place is quietest; 2.4 from 1/6/11, 5 GHz non-DFS first). Flags: all of 1/6/11 busy in a room, strong networks on 2–5 / 7–10, crowded 5 GHz, no channel quiet everywhere. Uploads as netinfo.wifiMon.

@@ -14,6 +14,12 @@
 <script src="./data/sonor-brand.js"></script>
 <script src="./data/sonor-header.js"></script>
 <script src="./data/sonor-app-auth.js"></script>
+<!-- the ONE project selector every Sonor app shows (SonorProjectBar). supabase-js only feeds the bar; on the offline site rig it
+     can't load and the plain plan picker on the Check tab takes over. -->
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4" integrity="sha384-GFr3yTh5lJznCbZfpTtXnwboFsxqtTQoeTZCRHhE0579KrRmlCzen5AA8ohaB5ug" crossorigin="anonymous"></script>
+<script src="./data/sonor-project-bus.js"></script>
+<script src="./data/sonor-project-list.js"></script>
+<script src="./data/sonor-project-bar.js"></script>
 <script src="./data/sonor-plan-image.js"></script>  <!-- the ONE Takeoffs plan loader (workspace master) -->
 <script src="./data/sonor-wireless.js"></script>
 <script src="./data/artnet-faults.js"></script>
@@ -173,6 +179,7 @@ a { color: var(--accent-c); }
 </head>
 <body>
 <div id="sonor-header"></div>
+<div id="sonorProjectBarHost"></div>
 
 <div class="bar">
   <span class="lbl">Scan</span>
@@ -462,7 +469,7 @@ a { color: var(--accent-c); }
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.8.1';
 const HOSTED_URL = 'https://apps.sonor.co.uk/sonor-net-scanner/';
 if (window.SonorHeader) {
   SonorHeader.init({ appName: 'Network Scanner', repo: 'sonor-net-scanner' });
@@ -944,17 +951,36 @@ function setActiveProject(pid) {
   document.dispatchEvent(new CustomEvent('sonor:project-changed', { detail: { previousId: prev || null, currentId: pid, project: null, source: 'net-scanner' } }));
 }
 document.addEventListener('sonor:project-changed', (e) => {   // another part of the workspace (the kit's project bar) picked a project
-  const d = e.detail || {}; if (d.source === 'net-scanner' || !d.currentId || d.currentId === $('#projPick').value) return;
+  const d = e.detail || {}; if (BAR || d.source === 'net-scanner' || !d.currentId || d.currentId === $('#projPick').value) return;
   if ([...$('#projPick').options].some((o) => o.value === d.currentId)) { $('#projPick').value = d.currentId; loadPlan(); }
 });
-window.addEventListener('storage', (e) => { if (e.key === ACTIVE_KEY && e.newValue && e.newValue !== $('#projPick').value && [...$('#projPick').options].some((o) => o.value === e.newValue)) { $('#projPick').value = e.newValue; loadPlan(); } });
+window.addEventListener('storage', (e) => { if (!BAR && e.key === ACTIVE_KEY && e.newValue && e.newValue !== $('#projPick').value && [...$('#projPick').options].some((o) => o.value === e.newValue)) { $('#projPick').value = e.newValue; loadPlan(); } });
 async function openScanFromUrl() {   // Network Map's Scans rows link here as ?pid=<uuid>&scan=<net_scans.id>
   const id = qs.get('scan'); if (!id || mode === 'demo') return;
   try { const cp = $('#connectPanel'); if (cp) cp.hidden = true; await openUpload(id); const t = document.querySelector('[data-tab="check"]'); if (t) t.click(); } catch (e) { toast('Could not open that scan: ' + e.message, true); }
 }
+let BAR = false, planIds = new Set();   // BAR: the shared SonorProjectBar is in charge of project choice; planIds = projects with a Network Map plan
+function barPick(id) {   // the bar picked a project: mirror it into the (hidden) plan picker every scanner function reads, then load its plan
+  if (!id) return; const s = $('#projPick');
+  if (![...s.options].some((o) => o.value === id)) { const p = SonorProjectBar.getProject && SonorProjectBar.getProject(); const o = document.createElement('option'); o.value = id; o.textContent = p ? [p.ref, p.name].filter(Boolean).join(' · ') : id; s.appendChild(o); }
+  s.value = id; loadPlan();
+}
+async function startBar() {
+  if (BAR || mode === 'demo' || !(window.SonorProjectBar && window.supabase && window.supabase.createClient)) return;
+  BAR = true; $('#projPick').hidden = true; $('#projLoad').hidden = true;
+  // the Android app signs its own calls (sonor-app-auth); on apps.sonor.co.uk the gateway does
+  const authFetch = async (u, o = {}) => { const h = new Headers(o.headers || {}); if (AUTH.active) Object.entries(await AUTH.headers()).forEach(([k, v]) => h.set(k, v)); return fetch(u, { ...o, headers: h }); };
+  const supa = window.supabase.createClient(SB_URL, SB_ANON, { auth: { persistSession: false, autoRefreshToken: false }, global: { fetch: authFetch } });
+  try {
+    await SonorProjectBar.init({ supa, appKey: 'net-scanner', wqBar: false, host: $('#sonorProjectBarHost'), decorateOption: (p) => (p && planIds.has(p.id) ? { suffix: ' · network plan', title: 'Has a Network Map plan to check against' } : ''), onChange: (d) => barPick(d && d.currentId) });
+    const id = qs.get('pid') || SonorProjectBar.getActiveId(); if (id) barPick(id);
+  } catch (e) { BAR = false; $('#projPick').hidden = false; $('#projLoad').hidden = false; }
+}
 async function loadProjects() {
   try {
     const rows = await rest('/network_configs?select=project_id,updated_at,projects(name,ref)&order=updated_at.desc&limit=200');
+    planIds = new Set(rows.map((r) => r.project_id));
+    if (window.SonorProjectBar && window.supabase && mode !== 'demo') { if (!BAR) { $('#projPick').innerHTML = '<option value="">Pick a project…</option>' + rows.map((r) => `<option value="${esc(r.project_id)}">${esc([r.projects && r.projects.ref, r.projects && r.projects.name].filter(Boolean).join(' · ') || r.project_id)}</option>`).join(''); await startBar(); } else SonorProjectBar.refresh(); if (BAR) { $('#projState').textContent = rows.length ? '' : 'No network plans visible yet.'; loadHistory(); return; } }
     $('#projPick').innerHTML = '<option value="">Pick a project with a network plan…</option>' + rows.map((r) => `<option value="${esc(r.project_id)}">${esc((r.projects && (r.projects.ref || r.projects.name)) || r.project_id)}${r.projects && r.projects.ref && r.projects.name ? ' · ' + esc(r.projects.name) : ''}</option>`).join('');
     const want = [qs.get('pid'), activeProject(), store.get('project', '')].find((x) => x && rows.some((r) => r.project_id === x));
     if (want) { $('#projPick').value = want; if (want === qs.get('pid') || want === activeProject()) { setActiveProject(want); loadPlan(); } }
@@ -968,10 +994,10 @@ async function loadProjects() {
 }
 async function loadPlan() {
   const pid = $('#projPick').value; if (!pid) return toast('Pick a project', true);
-  store.set('project', pid); setActiveProject(pid);
+  store.set('project', pid); if (!BAR) setActiveProject(pid);
   try {
     const [row] = await rest(`/network_configs?project_id=eq.${pid}&select=id,config,revision,updated_at,projects(name,ref)`);
-    if (!row) throw new Error('This project has no network plan yet');
+    if (!row) { if (BAR) { plan = null; $('#projState').textContent = 'This project has no Network Map plan yet. Make one in Network Map, or pick a project marked "network plan".'; renderTable(); loadHistory(); return; } throw new Error('This project has no network plan yet'); }
     const cfg = row.config || {};
     plan = { projectId: pid, rowId: row.id, revision: row.revision, updatedAt: row.updated_at, name: (row.projects && (row.projects.ref || row.projects.name)) || '', config: cfg,
       devices: (cfg.devices || []).map((d, i) => ({ ...d, _i: i, _ip: planIp(cfg, d), _mac: normMac(d.mac) })).filter((d) => d.takeoffStatus !== 'removed') };
@@ -2078,7 +2104,7 @@ if (!IS_BRIDGE_WINDOW) {
   else if (location.protocol === 'https:' || qs.has('agent')) { showConnect(); if (qs.get('agent')) $('#agentAddr').value = qs.get('agent'); $('#connectPanel .row').insertAdjacentHTML('beforeend', ' <a href="?demo=1">or try it with demo data</a>'); }
   else refresh();
   if (mode !== 'app') reportVersion();
-  if (mode !== 'demo' && (qs.get('pid') || qs.get('scan'))) loadProjects().then(openScanFromUrl);   // opened from Network Map, Site or Engineering
+  if (mode !== 'demo') loadProjects().then(() => { if (qs.get('pid') || qs.get('scan')) openScanFromUrl(); });   // the shared project bar shows on every tab; opened from Network Map, Site or Engineering → that scan   // opened from Network Map, Site or Engineering
   setInterval(() => { if (!document.hidden && agent && !agent.scan.running && mode === 'local') api('state').then((s) => { agent = s; if (s.scan.lastId && scanData && s.scan.lastId !== scanData.id) refresh(); }).catch(() => {}); }, 20000);
   setInterval(() => { if (!document.hidden && !logTimer) logRefresh(); }, 60000);
 }
