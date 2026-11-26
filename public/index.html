@@ -469,7 +469,7 @@ a { color: var(--accent-c); }
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = '1.8.1';
+const APP_VERSION = '1.8.2';
 const HOSTED_URL = 'https://apps.sonor.co.uk/sonor-net-scanner/';
 if (window.SonorHeader) {
   SonorHeader.init({ appName: 'Network Scanner', repo: 'sonor-net-scanner' });
@@ -1086,6 +1086,29 @@ async function projectsForSsid(ssid) {
   return { all, hits: ssid ? all.filter((p) => p.ssids.some((x) => normSsid(x) === normSsid(ssid))) : [] };
 }
 function compactDevice(d) { const { upnp, services, ports, web, ...rest } = d; return { ...rest, ports: (ports || []).map((p) => ({ port: p.port, name: p.name })), services: (services || []).slice(0, 12).map((x) => ({ type: x.type, name: x.name, port: x.port })), upnp: (upnp || []).slice(0, 2).map((u) => ({ friendlyName: u.friendlyName, manufacturer: u.manufacturer, modelName: u.modelName, serial: u.serial })), web: (web || []).slice(0, 2).map((w) => ({ port: w.port, title: w.title, server: w.server })) }; }
+// site_findings (Takeoffs docs/SITE-INFO-CONTRACT.md, CROSS-APP-CONTRACTS): every device a scan found is reported as FACTS ONLY, so the
+// office's site inbox in Takeoffs sees the engineer's names, notes, MACs and serials wherever the scan was done (tablet, Pi, laptop).
+// Never sends state / placement_uid / reviewed_*: a new row starts as 'found' and a reviewed row keeps its review. Personal devices
+// (phones, laptops) and the scanning machine itself are left out. One row per key (a batch upsert can't touch a row twice).
+function findingRows(pid, devices, at, notesMap, ref) {
+  const seen = new Set(); const rows = [];
+  for (const d of devices || []) {
+    if (!d || !d.ip || d.service === 'client' || d.isSelf) continue;
+    const mac = /^([0-9A-F]{2}[:-]){5}[0-9A-F]{2}$/i.test(d.mac || '') ? d.mac.toUpperCase().replace(/-/g, ':') : null;
+    const key = mac ? 'mac:' + mac : 'ip:' + d.ip; if (seen.has(key)) continue; seen.add(key);
+    const n = (notesMap || {})[(d.mac || d.ip).toUpperCase()] || {};
+    const model = [d.make, d.model].filter(Boolean).join(' ');
+    rows.push({ project_id: pid, source_app: 'scanner', source_ref: ref || null, key, name: String(n.name || d.name || model || d.ip).slice(0, 120),
+      ip: d.ip, mac, serial: d.serial || null, last_seen_at: at,
+      detail: { notes: n.note || null, make: d.make || null, model: d.model || null, firmware: d.firmware || null, service: d.service || null, named_by_engineer: !!n.name } });
+  }
+  return rows;
+}
+async function reportFindings(pid) {
+  const rows = findingRows(pid, scanData.devices, scanData.startedAt, notes, 'scan:' + scanData.startedAt);
+  for (let i = 0; i < rows.length; i += 200) await rest('/site_findings?on_conflict=project_id,source_app,key', { method: 'POST', headers: { Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify(rows.slice(i, i + 200)) });
+  return rows.length;
+}
 async function uploadScan() {
   if (!scanData) return toast('Run a scan first', true);
   if (mode === 'demo') return toast('Demo: in real use this sends the scan to the office and files it under the project on this Wi-Fi.');
@@ -1109,7 +1132,7 @@ async function uploadScan() {
       check_result: plan && plan.projectId === (project && project.id) ? (() => { const c = compare(); return { ok: c.rows.filter((r) => r.status[0] === 'ok').length, warn: c.rows.filter((r) => r.status[0] === 'warn').length, missing: c.rows.filter((r) => r.status[0] === 'bad').length, extra: c.extra.length }; })() : null };
     await rest('/net_scans', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(row) });
     toast(project ? `Uploaded to ${project.name}${matched === 'ssid' ? ` (matched by Wi-Fi "${ssid}")` : ''}` : 'Uploaded. The office will attach it to a project.');
-    if (project) { store.set('project', project.id); }
+    if (project) { store.set('project', project.id); reportFindings(project.id).catch((e) => toast('Scan uploaded, but the device list did not reach the site inbox: ' + e.message, true)); }
     loadHistory();
   } catch (e) { if (e.message !== 'cancelled') toast(e.message, true); }
   btn.disabled = false; btn.textContent = 'Upload';

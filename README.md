@@ -1,4 +1,4 @@
-# Sonor Network Scanner · v1.8.1
+# Sonor Network Scanner · v1.8.2
 
 A commissioning scanner for AV / Control4 sites. It finds every device on the network and says what it is in AV terms (make, model, firmware, serial where the device publishes it), checks the site against the project's plan in the Network Map app, and prints an as-found IP schedule.
 
@@ -71,6 +71,9 @@ Not done yet: hosting the page at apps.sonor.co.uk (needs the `sonorltd/sonor-ne
 - **Check against project** shows the project's uploaded scans (one master table, filtered per project) and the office's Unassigned
   list (attach to a project). **Review** opens an uploaded scan here; Fill MACs / Mark reviewed calls `net_scan_apply`, which writes
   the revision note into Network Map's history (`sonor_revisions`, app `network-map`: who scanned, who reviewed, what changed).
+
+## v1.8.2 (2026-11-26): found devices reach the office
+- **Upload** now also reports every found device (not phones or laptops) to the shared `site_findings` table as facts: your name and note for it, IP, MAC, serial, make, model, firmware. Takeoffs' site inbox shows them for the office to approve; nothing changes on the plan until they do. Works the same from the tablet, the Pi and a laptop, and records who scanned.
 
 ## v1.8.1 (2026-11-25): the shared project selector
 - The Sonor project bar (SonorProjectBar, the same one every app shows) sits under the header on every tab. Projects with a Network Map plan are marked "network plan"; picking one loads its plan for the Check tab, picking one without a plan says so. The bar follows the project picked in any other Sonor app.
