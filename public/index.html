@@ -367,12 +367,13 @@ a { color: var(--accent-c); }
           <select id="logMode"><option value="site">Site visit (stops after 12 h)</option><option value="watch:1">Trouble watch · 1 day</option><option value="watch:3">Trouble watch · 3 days</option><option value="watch:7" selected>Trouble watch · 7 days</option><option value="watch:14">Trouble watch · 14 days</option><option value="watch:30">Trouble watch · 30 days</option></select>
           <button id="logStart" class="primary">Start logging</button></div>
         <div class="row small" id="logTools" style="flex-wrap:wrap;gap:12px;margin-top:10px"></div>
+        <div id="awPanel" style="margin-top:12px"></div>
         <div class="gflags" id="logLive" style="margin-top:10px"></div>
       </div>
       <div class="panel wide"><span class="lbl">Look back</span>
         <div class="row" style="flex-wrap:wrap;gap:8px"><select id="logSess" style="max-width:100%;min-width:0"><option value="">Every session</option></select>
           <select id="logRange"><option value="3600000">Last hour</option><option value="21600000">Last 6 hours</option><option value="86400000" selected>Last 24 hours</option><option value="259200000">Last 3 days</option><option value="604800000">Last 7 days</option><option value="2592000000">Last 30 days</option></select>
-          <select id="logTool"><option value="">Every tool</option><option value="wifi">Wi-Fi</option><option value="rf">RF</option><option value="zigbee">Zigbee</option><option value="artnet">Art-Net</option><option value="traffic">Traffic</option><option value="nodes">Nodes</option><option value="log">Log</option></select>
+          <select id="logTool"><option value="">Every tool</option><option value="wifi">Wi-Fi</option><option value="rf">RF</option><option value="zigbee">Zigbee</option><option value="artnet">Art-Net</option><option value="traffic">Traffic</option><option value="artwatch">Art-Net flash watch</option><option value="nodes">Nodes</option><option value="log">Log</option></select>
           <select id="logKind"><option value="alert,source">Alerts + changes</option><option value="alert">Alerts only</option><option value="">Everything</option><option value="minute">Minute summaries</option></select>
           <input id="logQ" placeholder="Search: a room, an IP, a channel, an SSID…" style="flex:1;min-width:160px"><button id="logLoad">Show</button><span class="muted small" id="logSum"></span></div>
         <canvas class="graph" id="logGraph" width="1200" height="150" style="height:130px;margin-top:10px"></canvas>
@@ -469,7 +470,7 @@ a { color: var(--accent-c); }
 <div class="toast" id="toast"></div>
 
 <script>
-const APP_VERSION = '1.8.2';
+const APP_VERSION = '1.9.0';
 const HOSTED_URL = 'https://apps.sonor.co.uk/sonor-net-scanner/';
 if (window.SonorHeader) {
   SonorHeader.init({ appName: 'Network Scanner', repo: 'sonor-net-scanner' });
@@ -1648,8 +1649,8 @@ function drawWmonFall() {   // waterfall for the picked place: channels across, 
 }
 
 // ── Log tab (v1.8.0): the shared site log on the agent (sonor-sitelog.js session model; lib/logger.js samples every tool) ──
-const LOG_TOOLS = [['wifi', 'Wi-Fi in every room'], ['rf', 'RF probes'], ['zigbee', 'Zigbee probes'], ['artnet', 'Art-Net'], ['traffic', 'Traffic'], ['keepCapture', 'Keep a capture running'], ['pcapRing', 'Rolling .pcap for Wireshark']];
-const LOG_COL = { wifi: '#4bb9d3', rf: '#e3a72f', zigbee: '#2fbf71', artnet: '#c86bd6', traffic: '#e5784d', nodes: '#8fa3ff', log: '#8E8E93' };
+const LOG_TOOLS = [['wifi', 'Wi-Fi in every room'], ['rf', 'RF probes'], ['zigbee', 'Zigbee probes'], ['artnet', 'Art-Net'], ['traffic', 'Traffic'], ['keepCapture', 'Keep a capture running'], ['pcapRing', 'Rolling .pcap for Wireshark'], ['artwatch', 'Art-Net flash watch']];
+const LOG_COL = { artwatch: '#f5d05c', wifi: '#4bb9d3', rf: '#e3a72f', zigbee: '#2fbf71', artnet: '#c86bd6', traffic: '#e5784d', nodes: '#8fa3ff', log: '#8E8E93' };
 let logInfo = null, logLines = [], logTimer = null;
 const logWhen = (t) => { const d = new Date(t); return d.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' }) + ' ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }); };
 const fmtBytes = (b) => (b > 1e9 ? (b / 1e9).toFixed(1) + ' GB' : b > 1e6 ? (b / 1e6).toFixed(1) + ' MB' : Math.round((b || 0) / 1e3) + ' kB');
@@ -1669,12 +1670,29 @@ function renderLogState() {
   if ($('#logStop')) $('#logStop').onclick = async () => { try { logInfo = await api('logger', { op: 'stop' }); renderLogState(); toast('Logging stopped'); } catch (e) { toast(e.message, true); } };
   const cfg = logInfo.cfg || {}; $('#logTools').innerHTML = '<span class="muted">Logs:</span>' + LOG_TOOLS.map(([k, t]) => `<label><input type="checkbox" data-logtool="${k}"${cfg[k] ? ' checked' : ''}> ${t}</label>`).join('');
   $('#logTools').querySelectorAll('[data-logtool]').forEach((c) => c.onchange = async () => { try { logInfo = await api('logger', { op: 'set', cfg: { [c.dataset.logtool]: c.checked } }); renderLogState(); } catch (e) { toast(e.message, true); } });
+  renderAw(cfg);
   const al = (logInfo.alerts || []).slice(-8).reverse(); $('#logLive').innerHTML = al.length ? '<div class="lbl">Latest alerts</div>' + al.map((a) => `<div class="gflag ${a.level === 'bad' ? 'bad' : a.level === 'info' ? 'info' : 'warn'}"><span class="mono small muted">${logWhen(a.t)}</span> · <b>${esc(a.tool || '')}</b> ${esc(a.text || '')}</div>`).join('') : '';
   const sel = $('#logSess'); const cur = sel.value; sel.innerHTML = '<option value="">Every session</option>' + (logInfo.sessions || []).map((x) => `<option value="${esc(x.id)}"${x.id === cur ? ' selected' : ''}>${esc(x.name || x.id)} · ${logWhen(x.started)}${x.on ? ' (recording)' : ''} · ${fmtBytes(x.bytes)}</option>`).join('');
   const dl = mode === 'local' ? (logInfo.sessions || []).slice(0, 6).map((x) => `<a class="btn-sm" href="/api/log/download?session=${encodeURIComponent(x.id)}&gz=1">${esc(x.name || x.id)} .jsonl.gz</a>`).join('') : '';
   $('#logDl').innerHTML = dl ? '<span class="muted">Download:</span>' + dl + (logInfo.ring ? ' <span class="muted">· .pcap ring files are in scans/pcap/ring on the rig</span>' : '') : `<span class="muted">${mode === 'demo' ? 'Demo: on the rig each session downloads as one .jsonl file, and the .pcap ring opens in Wireshark.' : 'Downloads: open the Scanner from the rig (http://10.77.0.1:8050).'}</span>`;
 }
+// Art-Net flash watch (v1.9.0): settings, live state, "Flash seen" button, clips around every alert
+function renderAw(cfg) {
+  const el = $('#awPanel'); if (!el) return; if (!cfg.artwatch) { el.innerHTML = ''; return; } const a = logInfo.artwatch; const ifs = logInfo.ifaces || [];
+  const ifSel = `<select id="awIf">${['', ...ifs].map((i) => `<option value="${esc(i)}"${(cfg.artwatchIface || '') === i ? ' selected' : ''}>${i ? esc(i) : 'Main port'}</option>`).join('')}</select>`;
+  const clips = a && a.clips && a.clips.length ? '<div class="lbl" style="margin-top:8px">Clips (2 min before to 1 min after each alert, open in Wireshark)</div>' + a.clips.slice(0, 12).map((c) => `<div class="small"><span class="mono muted">${logWhen(c.at)}</span> · ${esc(c.text || c.why)} · ${mode === 'local' ? `<a href="/pcap/flash/${encodeURIComponent(c.file)}">${esc(c.file)}</a>` : esc(c.file)}</div>`).join('') : '';
+  el.innerHTML = `<div class="gcard" style="--c:#f5d05c"><div class="lbl">Art-Net flash watch</div>
+    <div class="muted small">Records every Art-Net packet in full plus all broadcast and multicast, and alerts on a second sender, reset / re-address packets, many OFF channels coming on at once, blackouts and traffic bursts. Best on a second port plugged into a switch port that mirrors the Art-Net node's port.</div>
+    <div class="row small" style="flex-wrap:wrap;gap:8px;margin-top:8px">Port ${ifSel} Node IP <input id="awNode" value="${esc(cfg.artwatchNode || '')}" placeholder="e.g. 192.168.1.47" style="width:140px"><button id="awSave">Save</button></div>
+    ${a ? `<div class="ln" style="margin-top:8px">${a.running ? 'Running' : 'Stopped'} on ${esc(a.iface)} · ${a.pkts.toLocaleString()} packets · ${a.dmx.toLocaleString()} DMX frames · ${a.alerts} alerts · <b>${esc(a.visibility)}</b>${a.err ? ` · <span style="color:var(--bad)">${esc(a.err)}</span>` : ''}</div>
+      <div class="small muted">Senders: ${(a.senders || []).map((x) => `${esc(x.ip)} (${Object.keys(x.ops || {}).join(', ')})`).join(' · ') || 'none yet'}</div>
+      <div class="row" style="flex-wrap:wrap;gap:8px;margin-top:8px"><input id="awNote" placeholder="What did you see? e.g. kitchen bar flashed on" style="flex:1;min-width:180px"><button id="awMark" class="primary">Flash seen now</button></div>${clips}`
+      : '<div class="muted small" style="margin-top:8px">Starts with the log session.</div>'}</div>`;
+  $('#awSave').onclick = async () => { try { logInfo = await api('logger', { op: 'set', cfg: { artwatchIface: $('#awIf').value, artwatchNode: $('#awNode').value.trim() } }); renderLogState(); toast('Flash watch settings saved'); } catch (e) { toast(e.message, true); } };
+  if ($('#awMark')) $('#awMark').onclick = async () => { try { logInfo = await api('logger', { op: 'mark', session: { note: $('#awNote').value.trim() } }); renderLogState(); toast('Marked. A clip is saved a minute from now.'); } catch (e) { toast(e.message, true); } };
+}
 function logText(l) {
+  if (l.tool === 'artwatch' && l.kind === 'packet') return `DMX from ${l.src} u${l.u}: ${l.moved} channel${l.moved === 1 ? '' : 's'} moved, ${l.lit} on · ${(l.ch || []).slice(0, 8).map((c) => `ch${c[0]} ${c[1]}→${c[2]}`).join(', ')}`;
   if (l.text) return l.text; if (l.state) return `${l.state}${l.ssid ? ' · ' + l.ssid : ''}${l.ch ? ' · ch ' + l.ch : ''}${l.battery > 0 ? ' · battery ' + SonorWireless.battPct(l.battery) + '%' : ''}${l.why ? ' · ' + l.why : ''}`;
   if (l.tool === 'wifi' && l.b24) { const g = l.g24 || []; const busy = [1, 6, 11].filter((c) => (g[c - 1] || 0) >= 1); return `${l.n} networks · best 2.4 GHz ch ${l.best24}${busy.length ? ' · busy ' + busy.join(', ') : ''}`; }
   if (l.tool === 'rf') return `${l.mhz || ''} MHz · floor ${l.floor} dBm · peak ${l.peak} · ${l.bursts ?? '—'} bursts`;

@@ -1,9 +1,9 @@
 {
   "name": "sonor-net-scanner",
-  "version": "1.8.2",
+  "version": "1.9.0",
   "description": "Sonor Network Scanner: site agent (Pi / laptop) + page that finds and identifies AV, control and network devices",
   "main": "server.js",
-  "scripts": { "start": "node server.js", "test": "node test/test.js && node test/wifi.test.js && node test/wifimap.test.js && node test/wireless.test.js && node test/artnet.test.js && node test/capture.test.js && node test/findings.test.js", "demo": "node test/demo-scan.js" },
+  "scripts": { "start": "node server.js", "test": "node test/test.js && node test/wifi.test.js && node test/wifimap.test.js && node test/wireless.test.js && node test/artnet.test.js && node test/capture.test.js && node test/findings.test.js && node test/artwatch.test.js", "demo": "node test/demo-scan.js" },
   "engines": { "node": ">=18" },
   "license": "UNLICENSED",
   "private": true

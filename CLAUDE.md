@@ -1,6 +1,6 @@
-# APP - Network Scanner (sonor-net-scanner) · v1.8.2
+# APP - Network Scanner (sonor-net-scanner) · v1.9.0
 
-> Current version: 1.8.2 (2026-11-26). One constant per surface: `APP_VERSION` in public/index.html, `VERSION` in server.js. The Android app (`APP - Android Apps/netscanner`) carries the same number in `versionName`.
+> Current version: 1.9.0 (2026-11-27). One constant per surface: `APP_VERSION` in public/index.html, `VERSION` in server.js. The Android app (`APP - Android Apps/netscanner`) carries the same number in `versionName`.
 
 Commissioning scanner for AV / Control4 sites: finds every device, names it in AV terms, checks the site against the project's Network Map plan, Wi-Fi survey and walk test, as-found IP schedule. Full feature list: README.md.
 
@@ -32,6 +32,7 @@ None. Graphite theme, service colours from sonor-brand.js.
 - Supabase schema changes need the owner's yes first. Every round: version bump in all sites + this banner + Hub card + push block.
 
 ## Timeline
+- 1.9.0 (2026-11-27): Art-Net flash watch in the Log tab (`lib/artwatch.js`, test/artwatch.test.js): full-packet Art-Net + broadcast / multicast capture on its own port (ideally a mirror of the node's switch port), alerts (second sender, reset / re-address packets, OFF channels lit at once, blackout, length change, bursts flagged when about hourly), every changed DMX frame logged, "Flash seen now" marks, and a .pcap clip from 2 min before to 1 min after each alert (`scans/pcap/flash/`, downloads at `/pcap/flash/`). Built for the 2 Parkside hourly flash.
 - 1.8.2 (2026-11-26): Upload reports found devices to `site_findings` (test/findings.test.js).
 - 1.8.x (2026-11-25): universal project bar, site log sessions (sonor-sitelog 1.1.0), Art-Net / traffic fault finders.
 - 1.6.x (2026-11-24): `?pid=` / `&scan=` deep links, shared project id, Wi-Fi map on Takeoffs plans, wireless rules.

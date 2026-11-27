@@ -14,7 +14,7 @@ const tools = require('./lib/tools');
 const { netinfo, speedtest } = require('./lib/netinfo');
 const wifi = require('./lib/wifi');
 
-const VERSION = '1.8.2';
+const VERSION = '1.9.0';
 const PORT = Number(process.env.PORT || 8050);
 const DATA = process.env.NETSCAN_DATA || path.join(__dirname, 'scans');
 const PUBLIC = path.join(__dirname, 'public');
@@ -232,6 +232,7 @@ actions.logger = async ({ op = 'get', cfg, session } = {}) => {
   if (op === 'start') { SITELOG.start(session || {}); LOGGER.sync(); }
   if (op === 'stop') { SITELOG.stop('stopped from the page'); LOGGER.sync(); }
   if (op === 'set') LOGGER.set(cfg);
+  if (op === 'mark') { const r = LOGGER.mark(session && session.note); if (r.error) return [409, r]; }
   return [200, { ...LOGGER.get(), sessions: SITELOG.sessions().slice(0, 30), alerts: SITELOG.alerts().slice(-100) }];
 };
 
@@ -249,6 +250,8 @@ const server = http.createServer(async (req, res) => {
     } catch (e) { if (!res.headersSent) json(res, e.message && /^Enter /.test(e.message) ? 400 : 500, { error: e.message }); }
     return;
   }
+  const fc = url.pathname.match(/^\/pcap\/flash\/(flash-[\w-]+\.pcap)$/);   // Art-Net flash watch clips
+  if (fc) { const f = path.join(DATA, 'pcap', 'flash', fc[1]); return fs.readFile(f, (err, data) => { if (err) { res.writeHead(404); return res.end('not found'); } res.writeHead(200, { 'Content-Type': 'application/vnd.tcpdump.pcap', 'Content-Disposition': `attachment; filename="${fc[1]}"` }); res.end(data); }); }
   const pc = url.pathname.match(/^\/pcap\/(capture-[\w-]+\.pcap)$/);
   if (pc) { const f = path.join(DATA, 'pcap', pc[1]); return fs.readFile(f, (err, data) => { if (err) { res.writeHead(404); return res.end('not found'); } res.writeHead(200, { 'Content-Type': 'application/vnd.tcpdump.pcap', 'Content-Disposition': `attachment; filename="${pc[1]}"` }); res.end(data); }); }
   const file = path.normalize(path.join(PUBLIC, url.pathname === '/' ? 'index.html' : decodeURIComponent(url.pathname)));
